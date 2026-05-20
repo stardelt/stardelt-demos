@@ -88,7 +88,7 @@ make up
 
 ## Documentation
 
-Full docs at [docs.stardelt.io](https://docs.stardelt.io).
+Full docs at [stardelt.io](https://stardelt.io).
 
 ## k3s
 
