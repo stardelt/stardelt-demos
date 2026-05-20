@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint (shellcheck + hadolint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: shellcheck kind scripts
+        run: shellcheck kind/up.sh kind/build-images.sh kind/smoke.sh
+
+      - name: Install hadolint
+        run: |
+          curl -sSL https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64 \
+            -o /usr/local/bin/hadolint
+          chmod +x /usr/local/bin/hadolint
+
+      - name: hadolint airflow Dockerfile
+        run: hadolint images/airflow/Dockerfile
+
+  image-airflow:
+    name: Build + push airflow demo image
+    runs-on: ubuntu-latest
+    # Only on push to main (not on PRs)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: lint
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ghcr.io/stardelt/airflow:demo
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: images/airflow/Dockerfile
+          push: true
+          tags: ghcr.io/stardelt/airflow:demo
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

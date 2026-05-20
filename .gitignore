@@ -1,0 +1,6 @@
+.kind-data/
+.kube/
+*.kubeconfig
+.env
+.env.local
+*.log
