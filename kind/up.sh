@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bring up the Stardelt MVP on a local kind cluster.
+# Bring up the stardelt MVP on a local kind cluster.
 # Idempotent: re-running advances past steps that already succeeded.
 set -euo pipefail
 
@@ -122,7 +122,7 @@ install_trino() {
 }
 
 build_stardelt_images() {
-  log "building Stardelt-owned container images"
+  log "building stardelt-owned container images"
   "$REPO_ROOT/kind/build-images.sh"
 }
 
@@ -139,7 +139,7 @@ install_airflow() {
 }
 
 install_nova() {
-  log "deploying Stardelt Nova"
+  log "deploying stardelt Nova"
   kubectl apply -f "$PLATFORM_DIR/manifests/nova-deployment.yaml" >/dev/null
   kubectl -n "$NAMESPACE" rollout status deploy/nova --timeout=3m
   ok "Nova ready"

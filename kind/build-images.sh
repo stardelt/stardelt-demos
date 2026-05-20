@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Stardelt-owned container images and load them into the kind cluster.
+# Build stardelt-owned container images and load them into the kind cluster.
 # kind has no registry, so images must be `kind load`-ed for pods to find them.
 set -euo pipefail
 

@@ -8,11 +8,11 @@ PLATFORM_DIR ?= $${STARDELT_PLATFORM_DIR:-../stardelt-platform}
 .PHONY: help deps up down pf logs smoke build-images airflow-trigger airflow-ui superset-ui clean
 
 help:
-	@echo "Stardelt demos — local kind cluster"
+	@echo "stardelt demos — local kind cluster"
 	@echo
 	@echo "Targets:"
 	@echo "  deps             — check required CLI tools are installed"
-	@echo "  up               — create kind cluster + install the full Stardelt stack (~10 min)"
+	@echo "  up               — create kind cluster + install the full stardelt stack (~10 min)"
 	@echo "  smoke            — run the Stage 1 smoke query against Trino"
 	@echo "  build-images     — build + kind-load the stardelt-owned container images"
 	@echo "  airflow-trigger  — unpause and trigger the nyc_taxi_load DAG"

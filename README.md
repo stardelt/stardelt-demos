@@ -1,6 +1,6 @@
-# Stardelt demos — Try Stardelt on a laptop
+# stardelt demos — Try stardelt on a laptop
 
-Run the full Stardelt open lakehouse stack — Trino, Lakekeeper, SeaweedFS, Airflow, Superset, and Nova — on a single-node [kind](https://kind.sigs.k8s.io/) cluster. No cloud account required.
+Run the full stardelt open lakehouse stack — Trino, Lakekeeper, SeaweedFS, Airflow, Superset, and Nova — on a single-node [kind](https://kind.sigs.k8s.io/) cluster. No cloud account required.
 
 ## Prerequisites
 
@@ -43,7 +43,7 @@ make smoke       # verify Trino → Iceberg → SeaweedFS round-trip
 | **Trino** | Distributed SQL query engine |
 | **Airflow** | Workflow orchestration (sample DAG: `nyc_taxi_load`) |
 | **Superset** | BI dashboards over Trino |
-| **Nova** | Stardelt UI — pipelines, observability, lineage |
+| **Nova** | stardelt UI — pipelines, observability, lineage |
 
 ## Try it
 
