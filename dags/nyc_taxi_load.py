@@ -9,7 +9,7 @@ Idempotency: a task whose (year, month) partition is already present in the
 table short-circuits.
 
 Config via environment variables on the worker pod, sourced from K8s
-Secret `ozone-s3-creds` and ConfigMap `stardelt-runtime`:
+Secret `stardelt-s3-creds` and ConfigMap `stardelt-runtime`:
   CATALOG_URI, CATALOG_WAREHOUSE, S3_ENDPOINT, S3_ACCESS_KEY,
   S3_SECRET_KEY, S3_REGION, YEARS.
 """

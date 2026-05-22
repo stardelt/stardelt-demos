@@ -3,9 +3,6 @@ apiVersion: kind.x-k8s.io/v1alpha4
 name: stardelt
 nodes:
   - role: control-plane
-    extraMounts:
-      - hostPath: ./.kind-data/ozone
-        containerPath: /var/lib/ozone
     extraPortMappings:
       - containerPort: 30080
         hostPort: 8080

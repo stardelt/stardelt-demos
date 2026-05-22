@@ -11,7 +11,7 @@ NOVA_DIR="${STARDELT_NOVA_DIR:-$(cd "$REPO_ROOT/../stardelt-nova" && pwd)}"
 
 # Chart versions pinned 2026-05-16. Bump deliberately.
 CNPG_CHART_VERSION="0.28.2"
-SEAWEEDFS_CHART_VERSION="4.25.1"  # documented Ozone-alternative, fallback per plan
+SEAWEEDFS_CHART_VERSION="4.25.1"  # S3-compatible object store
 LAKEKEEPER_CHART_VERSION="0.11.0"
 TRINO_CHART_VERSION="1.42.2"
 AIRFLOW_CHART_VERSION="1.21.0"    # apache-airflow/airflow, appVersion 3.2.0
@@ -27,9 +27,7 @@ ensure_cluster() {
     ok "kind cluster '$CLUSTER' already exists"
   else
     log "creating kind cluster '$CLUSTER'"
-    mkdir -p "$REPO_ROOT/kind/.kind-data/ozone"
-    # kind-config.yaml uses a relative hostPath (./.kind-data/ozone); cd into kind/ so it resolves
-    (cd "$REPO_ROOT/kind" && kind create cluster --config "$REPO_ROOT/kind/kind-config.yaml")
+    kind create cluster --config "$REPO_ROOT/kind/kind-config.yaml"
     ok "kind cluster created"
   fi
   kubectl cluster-info --context "kind-$CLUSTER" >/dev/null
@@ -102,7 +100,7 @@ install_lakekeeper() {
 }
 
 bootstrap_lakekeeper_warehouse() {
-  log "bootstrapping Lakekeeper + 'warehouse' on Ozone S3"
+  log "bootstrapping Lakekeeper + 'warehouse' on SeaweedFS S3"
   kubectl -n "$NAMESPACE" delete job lakekeeper-bootstrap --ignore-not-found=true >/dev/null
   kubectl apply -f "$PLATFORM_DIR/manifests/lakekeeper-bootstrap.yaml" >/dev/null
   kubectl -n "$NAMESPACE" wait --for=condition=complete --timeout=3m job/lakekeeper-bootstrap

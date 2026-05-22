@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage 1 acceptance: round-trip a write+read through Trino → Iceberg → Ozone.
+# Stage 1 acceptance: round-trip a write+read through Trino → Iceberg → SeaweedFS.
 set -euo pipefail
 
 NAMESPACE="${NAMESPACE:-stardelt}"
