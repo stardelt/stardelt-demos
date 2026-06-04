@@ -16,6 +16,10 @@ LAKEKEEPER_CHART_VERSION="0.11.0"
 TRINO_CHART_VERSION="1.42.2"
 AIRFLOW_CHART_VERSION="1.21.0"    # apache-airflow/airflow, appVersion 3.2.0
 SUPERSET_CHART_VERSION="0.15.5"   # superset/superset, appVersion 5.0.0
+# Synced with stardelt-platform/Makefile CERT_MANAGER_VERSION. The kind demo
+# does NOT enable ingress; recorded here only to satisfy the platform/demos
+# version-sync rule in CLAUDE.md.
+CERT_MANAGER_CHART_VERSION="1.16.2"
 
 log()  { printf '\033[1;34m▶\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m✓\033[0m %s\n' "$*"; }
