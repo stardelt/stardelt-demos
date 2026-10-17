@@ -1,9 +1,9 @@
 # AGENTS.md — stardelt-demos
 
-Laptop demo path for stardelt: stands up the platform on a single-node kind cluster, no
-cloud account needed. It owns no install logic — after creating the cluster it delegates
-to the `stardelt-platform` Makefile (`make install-core` / `make install`), so the
-laptop path cannot drift from the platform wiring.
+Laptop demo path for stardelt: stands up the platform on a single-node kind cluster.
+It owns no install logic — it delegates to the `stardelt-platform` Makefile
+(`make install-core` / `make install`), so the laptop path cannot drift from the
+platform wiring.
 
 ## Read first
 
@@ -16,14 +16,13 @@ laptop path cannot drift from the platform wiring.
 
 ## Layout
 
-- `Makefile` — thin wrapper: `up`, `smoke`, `pf`, `down`, `clean`, plus full-profile
-  extras (`airflow-trigger`, `airflow-ui`, `superset-ui`).
-- `kind/up.sh` — creates the kind cluster + namespace, builds/loads images, then runs
-  `make install-core` (or `install` with `APP_PROFILE=full`) in `stardelt-platform`.
-- `kind/smoke.sh` — Stage-1 acceptance: write + read round-trip through
-  Trino → Iceberg → SeaweedFS.
-- `kind/build-images.sh` — builds the stardelt-owned images (airflow, superset, nova)
-  and `kind load`s them (kind has no registry).
+- `Makefile` — wrapper targets: `up`, `smoke`, `pf`, `down`, `clean` (+ full-profile
+  `airflow-trigger`, `airflow-ui`, `superset-ui`).
+- `kind/up.sh` — creates the kind cluster + namespace and delegates the install to
+  `stardelt-platform` (`make install-core`, or `install` with `APP_PROFILE=full`).
+- `kind/smoke.sh` — Stage-1 acceptance: Trino → Iceberg → SeaweedFS round-trip.
+- `kind/build-images.sh` — builds + `kind load`s the stardelt images (airflow, superset,
+  nova; kind has no registry).
 - `dags/nyc_taxi_load.py` and `images/airflow/` — sample DAG + demo Airflow image.
 
 Requires sibling checkouts of `stardelt-platform` and `stardelt-nova` next to this repo
