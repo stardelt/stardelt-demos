@@ -1,6 +1,9 @@
 SHELL   := /bin/bash
-CLUSTER   ?= stardelt
-NAMESPACE ?= stardelt
+CLUSTER     ?= stardelt
+NAMESPACE   ?= stardelt
+# APP_PROFILE=core runs the platform's install-core; 'full' adds Airflow + Superset.
+APP_PROFILE ?= core
+SLIM        ?=
 
 # Resolve sibling-repo paths (override with env vars if layout differs).
 PLATFORM_DIR ?= $${STARDELT_PLATFORM_DIR:-../stardelt-platform}
@@ -12,7 +15,7 @@ help:
 	@echo
 	@echo "Targets:"
 	@echo "  deps             — check required CLI tools are installed"
-	@echo "  up               — create kind cluster + install the full stardelt stack (~10 min)"
+	@echo "  up               — create kind cluster + install stardelt (delegates to stardelt-platform)"
 	@echo "  smoke            — run the Stage 1 smoke query against Trino"
 	@echo "  build-images     — build + kind-load the stardelt-owned container images"
 	@echo "  airflow-trigger  — unpause and trigger the nyc_taxi_load DAG"
@@ -26,12 +29,14 @@ help:
 	@echo "Env vars:"
 	@echo "  STARDELT_PLATFORM_DIR  — path to stardelt-platform repo (default: ../stardelt-platform)"
 	@echo "  STARDELT_NOVA_DIR      — path to stardelt-nova repo    (default: ../stardelt-nova)"
+	@echo "  APP_PROFILE            — 'core' (default) = install-core, 'full' = install"
+	@echo "  SLIM                   — SLIM=1 forwards small-node overrides to install-core"
 
 deps:
 	@$(PLATFORM_DIR)/scripts/check-deps.sh
 
 up:
-	@bash kind/up.sh
+	@CLUSTER=$(CLUSTER) NAMESPACE=$(NAMESPACE) APP_PROFILE=$(APP_PROFILE) SLIM=$(SLIM) bash kind/up.sh
 
 down:
 	kind delete cluster --name $(CLUSTER)
