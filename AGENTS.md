@@ -1,9 +1,9 @@
 # AGENTS.md — stardelt-demos
 
-Demo/onboarding path for stardelt: stands up the platform on a single-node kind
-cluster for a laptop, with no cloud account. It owns no install logic — after creating
-the cluster it delegates to the `stardelt-platform` Makefile (`make install-core` /
-`make install`), so the laptop path cannot drift from the platform wiring.
+Laptop demo path for stardelt: stands up the platform on a single-node kind cluster, no
+cloud account needed. It owns no install logic — after creating the cluster it delegates
+to the `stardelt-platform` Makefile (`make install-core` / `make install`), so the
+laptop path cannot drift from the platform wiring.
 
 ## Read first
 
@@ -24,8 +24,7 @@ the cluster it delegates to the `stardelt-platform` Makefile (`make install-core
   Trino → Iceberg → SeaweedFS.
 - `kind/build-images.sh` — builds the stardelt-owned images (airflow, superset, nova)
   and `kind load`s them (kind has no registry).
-- `dags/nyc_taxi_load.py` — sample pipeline, full profile only.
-- `images/airflow/` — demo Airflow image; CI hadolints it.
+- `dags/nyc_taxi_load.py` and `images/airflow/` — sample DAG + demo Airflow image.
 
 Requires sibling checkouts of `stardelt-platform` and `stardelt-nova` next to this repo
 (override with `STARDELT_PLATFORM_DIR` / `STARDELT_NOVA_DIR`).
@@ -39,13 +38,11 @@ APP_PROFILE=full make up     # add Airflow + Superset
 SLIM=1 make up   # small-node overrides, forwarded to install-core
 make smoke       # verify the Trino → Iceberg → SeaweedFS round-trip
 make pf          # port-forwards: Trino :8081, Lakekeeper :8181
-make down        # delete the kind cluster
-make clean       # make down + docker image prune -f
+make down        # delete the kind cluster (make clean = down + docker image prune -f)
 ```
 
-Cheap local checks: `bash -n kind/*.sh` (CI shellchecks the same files:
-`shellcheck kind/up.sh kind/build-images.sh kind/smoke.sh`). `make up` needs Docker,
-kind, kubectl and helm (all checked by `make deps`).
+Cheap local checks: `bash -n kind/*.sh` (CI runs `shellcheck` on the same files).
+`make up` needs Docker, kind, kubectl and helm (all checked by `make deps`).
 
 ## Conventions
 
