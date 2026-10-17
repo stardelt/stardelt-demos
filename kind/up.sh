@@ -22,6 +22,7 @@ CLUSTER="${CLUSTER:-stardelt}"
 NAMESPACE="${NAMESPACE:-stardelt}"
 APP_PROFILE="${APP_PROFILE:-core}"
 SLIM="${SLIM:-}"
+IMAGE_TAG="${IMAGE_TAG:-dev}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLATFORM_DIR="${STARDELT_PLATFORM_DIR:-$(cd "$REPO_ROOT/../stardelt-platform" && pwd)}"
 NOVA_DIR="${STARDELT_NOVA_DIR:-$(cd "$REPO_ROOT/../stardelt-nova" && pwd)}"
@@ -74,6 +75,20 @@ install_stack() {
   ok "stardelt '$APP_PROFILE' profile installed"
 }
 
+# The platform manifest points Nova at ghcr.io with a pull secret. kind has no
+# registry, so retarget the Deployment at the locally built, kind-loaded image.
+pin_kind_images() {
+  local image="stardelt/nova:$IMAGE_TAG"
+  if kubectl -n "$NAMESPACE" get deploy/nova >/dev/null 2>&1; then
+    log "pinning nova to the locally built image ($image)"
+    kubectl -n "$NAMESPACE" set image deploy/nova "nova=$image" >/dev/null
+    kubectl -n "$NAMESPACE" patch deploy/nova --type=merge \
+      -p '{"spec":{"template":{"spec":{"imagePullPolicy":"IfNotPresent","imagePullSecrets":null}}}}' >/dev/null
+    kubectl -n "$NAMESPACE" rollout status deploy/nova --timeout=180s >/dev/null
+    ok "nova running from $image"
+  fi
+}
+
 main() {
   [ -d "$PLATFORM_DIR" ]        || fail "stardelt-platform sibling repo not found at $PLATFORM_DIR — clone github.com/stardelt/stardelt-platform next to this repo"
   [ -f "$PLATFORM_DIR/Makefile" ] || fail "no Makefile at $PLATFORM_DIR — update the stardelt-platform checkout (needs install-core)"
@@ -82,6 +97,7 @@ main() {
   ensure_cluster
   build_stardelt_images
   install_stack
+  pin_kind_images
 
   log "stack up ($APP_PROFILE) — run \`make smoke\` to validate"
   case "$APP_PROFILE" in
