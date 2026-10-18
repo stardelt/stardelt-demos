@@ -100,7 +100,5 @@ image is built for it here) and asserts Superset only as ready. Budget: `DEMO_BU
   `STARDELT_NOVA_DIR`. `kind/gate.sh` honours `GATE_BUDGET_SECONDS` (default 1800);
   `kind/demo.sh` honours `DEMO_BUDGET_SECONDS` (default 4500) and
   `DAG_WAIT_SECONDS` (default 2400).
-- The full profile (`APP_PROFILE=full`) needs the `stardelt-s3-creds` Secret: the
-  platform's `make install-core` applies `manifests/s3-credentials.dev.yaml` itself,
-  `make install` does not — `kind/up.sh` applies it for the full profile (the
-  manifest is pinned to `namespace: stardelt`).
+- Both profiles: the platform's `make install` / `make install-core` generate
+  `stardelt-s3-creds` themselves; nothing to apply by hand.
