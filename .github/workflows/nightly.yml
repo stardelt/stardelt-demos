@@ -54,6 +54,12 @@ on:
         description: in-script wall-clock budget for the whole leg
         default: "4500"
         type: string
+  pull_request:
+    # Opt-in only, and never part of the per-PR gate (that is verify.yml, ~5
+    # minutes): label a pull request `nightly-demo` to run this leg on it. The
+    # job below is skipped for every unlabeled PR, so the label is the only
+    # thing that can make a PR pay for a full-profile install.
+    types: [opened, reopened, labeled, synchronize]
 
 # The nightly never blocks or is blocked by the per-PR gate: different workflow,
 # own concurrency group, and it only ever runs on a schedule or by hand.
@@ -67,6 +73,11 @@ permissions:
 jobs:
   demo:
     name: full profile + nyc_taxi DAG + Trino assertion
+    # Runs on the schedule and on demand; on a pull request only when the
+    # `nightly-demo` label is present (see the note above `on:`).
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'nightly-demo')
     runs-on: ubuntu-latest
     timeout-minutes: 110
     env:
