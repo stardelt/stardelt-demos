@@ -16,7 +16,7 @@ platform wiring.
 
 ## Layout
 
-- `Makefile` — wrapper targets: `up`, `smoke`, `pf`, `down`, `clean` (+ full-profile
+- `Makefile` — wrapper targets: `up`, `smoke`, `demo`, `pf`, `down`, `clean` (+ full-profile
   `airflow-trigger`, `airflow-ui`, `superset-ui`).
 - `kind/up.sh` — creates the kind cluster + namespace and delegates the install to
   `stardelt-platform` (`make install-core`, or `install` with `APP_PROFILE=full`).
@@ -24,8 +24,12 @@ platform wiring.
 - `kind/gate.sh` + `kind/diagnostics.sh` — the WP-02 verification gate and its
   failure dump; driven by `.github/workflows/verify.yml` (PRs, pushes to `main`,
   `workflow_dispatch`). What it proves, and what it excludes, is in the README.
+- `kind/demo.sh` — the WP-02 nightly/integration leg: full profile → Airflow
+  `nyc_taxi_load` run → Trino assertions on the Iceberg table; driven by
+  `.github/workflows/nightly.yml` (schedule, `workflow_dispatch`, and the
+  `nightly-demo` label on a PR). Needs a 16 GB node; ~30–60 min.
 - `kind/build-images.sh` — builds + `kind load`s the stardelt images (airflow, superset,
-  nova; kind has no registry).
+  nova; kind has no registry). Takes an optional image list.
 - `dags/nyc_taxi_load.py` and `images/airflow/` — sample DAG + demo Airflow image.
 
 Requires sibling checkouts of `stardelt-platform` and `stardelt-nova` next to this repo
@@ -57,6 +61,21 @@ gh workflow run verify.yml -f platform_ref=my-branch   # the CI job, installer r
 `kind/gate.sh` runs `STARDELT_IMAGES=none` (CI builds no stardelt images, so Nova is out of
 scope) and fails loudly: no phase is skipped to keep a run green.
 
+The nightly demo leg (full profile + NYC-taxi DAG, same script in CI and locally):
+
+```bash
+make demo                                            # bash kind/demo.sh
+gh workflow run nightly.yml -f platform_ref=my-branch
+gh pr edit <nr> --add-label nightly-demo             # run it on a PR
+bash kind/diagnostics.sh                             # dump after a red run
+```
+
+`kind/demo.sh` builds the two images the full profile runs (`STARDELT_IMAGES="airflow superset"`),
+installs with `APP_PROFILE=full`, triggers `nyc_taxi_load` with a known run id, waits (bounded) for
+`success`, and asserts the resulting Iceberg table through Trino. It drops the Nova Deployment (no
+image is built for it here) and asserts Superset only as ready. Budget: `DEMO_BUDGET_SECONDS`
+(default 4500) — the budget is inside the workflow's 110-minute job timeout.
+
 ## Conventions
 
 - **PR-only.** Never push to `main`; branch off `origin/main` and keep PRs small.
@@ -72,6 +91,12 @@ scope) and fails loudly: no phase is skipped to keep a run green.
   deployment at the locally built `stardelt/nova:dev` image (kind has no registry).
 - `make smoke` requires a finished `make up` — it execs into the Trino coordinator pod.
 - Useful env vars: `APP_PROFILE` (`core` default, `full`), `SLIM=1`, `NAMESPACE`,
-  `CLUSTER`, `STARDELT_IMAGES` (`build` default, `none`), `KIND_NODE_IMAGE`,
-  `STARDELT_PLATFORM_DIR`, `STARDELT_NOVA_DIR`. `kind/gate.sh` also honours
-  `GATE_BUDGET_SECONDS` (default 1800).
+  `CLUSTER`, `STARDELT_IMAGES` (`build` default, `none`, or a list such as
+  `"airflow superset"`), `KIND_NODE_IMAGE`, `STARDELT_PLATFORM_DIR`,
+  `STARDELT_NOVA_DIR`. `kind/gate.sh` honours `GATE_BUDGET_SECONDS` (default 1800);
+  `kind/demo.sh` honours `DEMO_BUDGET_SECONDS` (default 4500) and
+  `DAG_WAIT_SECONDS` (default 2400).
+- The full profile (`APP_PROFILE=full`) needs the `stardelt-s3-creds` Secret: the
+  platform's `make install-core` applies `manifests/s3-credentials.dev.yaml` itself,
+  `make install` does not — `kind/up.sh` applies it for the full profile (the
+  manifest is pinned to `namespace: stardelt`).
