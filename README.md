@@ -137,9 +137,11 @@ skipping anything:
 | NYC-taxi DAG (`make airflow-trigger`) | full profile — the nightly/integration leg of WP-02 is still open |
 
 Runs are bounded: a 30-minute budget inside the gate (`GATE_BUDGET_SECONDS`), inside a 45-minute job
-timeout. Every start-up wait is a `kubectl wait`/`rollout status` with a timeout — there are no sleeps
-to "give it a minute". On failure `kind/diagnostics.sh` dumps pods, events, describes, logs, helm
-history, the Trino catalog config and the node state into the run log:
+timeout; a green run takes about five minutes. The gate pins the Kubernetes version it installs onto
+(`KIND_NODE_IMAGE`, currently `kindest/node:v1.37.0`, overridable per run). Every start-up wait is a
+`kubectl wait`/`rollout status` with a timeout — there are no sleeps to "give it a minute". On failure
+`kind/diagnostics.sh` dumps pods, events, describes, logs, helm history, the Trino catalog config and
+the node state into the run log:
 
 ```bash
 gh run view --log-failed        # the failing component, described and logged
