@@ -8,7 +8,7 @@ SLIM        ?=
 # Resolve sibling-repo paths (override with env vars if layout differs).
 PLATFORM_DIR ?= $${STARDELT_PLATFORM_DIR:-../stardelt-platform}
 
-.PHONY: help deps up down pf logs smoke build-images airflow-trigger airflow-ui superset-ui clean
+.PHONY: help deps up down pf logs smoke build-images airflow-trigger airflow-ui superset-ui demo clean
 
 help:
 	@echo "stardelt demos — local kind cluster"
@@ -17,6 +17,7 @@ help:
 	@echo "  deps             — check required CLI tools are installed"
 	@echo "  up               — create kind cluster + install stardelt (delegates to stardelt-platform)"
 	@echo "  smoke            — run the Stage 1 smoke query against Trino"
+	@echo "  demo             — full profile + NYC-taxi DAG → Trino assertion (the nightly leg)"
 	@echo "  build-images     — build + kind-load the stardelt-owned container images"
 	@echo "  airflow-trigger  — unpause and trigger the nyc_taxi_load DAG"
 	@echo "  airflow-ui       — port-forward Airflow API server to localhost:8088"
@@ -49,6 +50,11 @@ logs:
 
 smoke:
 	@bash kind/smoke.sh
+
+# The nightly demo leg: full profile + the NYC-taxi DAG + the Trino assertion.
+# Long (it downloads and loads a year of taxi trips); needs a 16 GB node.
+demo:
+	@bash kind/demo.sh
 
 build-images:
 	@bash kind/build-images.sh
