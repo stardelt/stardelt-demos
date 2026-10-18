@@ -1,0 +1,102 @@
+name: Verify
+
+# WP-02 — the verification gate. Proves the platform installs and works from
+# scratch on a clean cluster, headlessly, on a GitHub-hosted runner.
+#
+# WHAT IT PROVES (the end-to-end property, not a subset of it)
+#   kind cluster → stardelt-platform `make install-core SLIM=1`
+#   → CloudNative-PG (the catalog's Postgres) + SeaweedFS (a real S3 object
+#     store) + Lakekeeper (a real Iceberg REST catalog) + Trino (a real query
+#     engine)
+#   → kind/smoke.sh writes a row and reads it back through all of them
+#   → the row survives an object-store pod restart, and the table carries a real
+#     Iceberg snapshot.
+# Every stage is asserted in kind/gate.sh; nothing is skipped, and the exit code
+# is the signal. On failure this workflow dumps diagnostics
+# (kind/diagnostics.sh: pods, events, describes, logs, helm history) so a red
+# run says why.
+#
+# WHAT IT DELIBERATELY DOES NOT COVER (also in README.md → "Verification gate")
+#   Nova                — the core profile applies it, but it needs the
+#                         stardelt/nova image, which the laptop path builds
+#                         locally (kind/build-images.sh) and CI does not build.
+#                         The gate installs with STARDELT_IMAGES=none and drops
+#                         the Nova Deployment, so the signal is the data path.
+#   Airflow + Superset  — `APP_PROFILE=full`, needs a 16 GB node.
+#   JupyterHub, ingress/TLS, OIDC login, the operator, and the NYC-taxi DAG —
+#                         the nightly/integration leg of WP-02 is still open.
+#
+# Runner budget: the SLIM=1 profile (tuned for an 8 GB / 4 vCPU node) on the
+# 4 vCPU / 16 GB GitHub-hosted runner, bounded at 45 minutes end to end —
+# a green run takes ~5 minutes. Image preloading via `kind load docker-image` is
+# deliberately absent: there is nothing to warm on a fresh runner, and it would
+# re-transfer the same bytes the node's containerd pulls in parallel anyway. If
+# pulls ever dominate, the lever is a registry mirror, and `kind_node_image`
+# below pins the Kubernetes version the gate installs onto.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      platform_ref:
+        description: stardelt-platform ref (branch, tag or sha) to install
+        default: main
+        type: string
+      kind_node_image:
+        description: kindest/node image to run the platform on (default pins the node image below)
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  gate:
+    name: install + smoke on a clean kind cluster
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CLUSTER: stardelt
+      NAMESPACE: stardelt
+      # Same sibling layout as a laptop: the gate delegates the install to the
+      # platform Makefile (kind/up.sh), so the demo path is the path under test.
+      STARDELT_PLATFORM_DIR: ${{ github.workspace }}/stardelt-platform
+      # Pinned so a runner-image bump cannot silently change the Kubernetes
+      # version the platform is verified against (v1.37 also matches the k3s
+      # version of the Hetzner dev cluster). Override per run with the input.
+      KIND_NODE_IMAGE: ${{ inputs.kind_node_image || 'kindest/node:v1.37.0' }}
+    steps:
+      - name: Check out stardelt-demos
+        uses: actions/checkout@v4
+        with:
+          path: stardelt-demos
+
+      - name: Check out stardelt-platform (the installer under test)
+        uses: actions/checkout@v4
+        with:
+          repository: stardelt/stardelt-platform
+          ref: ${{ inputs.platform_ref || 'main' }}
+          fetch-depth: 1
+          path: stardelt-platform
+
+      - name: Tool versions (for the record)
+        run: |
+          kind version
+          kubectl version --client=true
+          helm version --short
+          docker version --format 'docker server {{.Server.Version}}'
+          echo "--- runner"
+          free -m
+          df -h / /var/lib/docker
+
+      - name: Verification gate
+        run: bash stardelt-demos/kind/gate.sh
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: bash stardelt-demos/kind/diagnostics.sh
