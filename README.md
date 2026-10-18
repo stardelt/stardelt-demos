@@ -189,9 +189,14 @@ gh pr edit <nr> --add-label nightly-demo     # run it on a pull request
 | Airflow task-log persistence | the kind values keep logs in `emptyDir` (`logs.persistence.enabled: false`), so a *successful* task pod's log is deleted with the pod. Failed pods are kept, and `kind/diagnostics.sh` dumps them |
 
 Runs are bounded: a 75-minute in-script budget (`DEMO_BUDGET_SECONDS`, 40 of it reserved for the DAG
-run) inside a 110-minute job timeout. If a run is red, the job's last step dumps
-`kind/diagnostics.sh` — including the Airflow section (DAG runs, DAG import errors, every task pod's
-log) and the Superset section — so `gh run view --log-failed` says which part failed.
+run) inside a 110-minute job timeout. Observed on the first green run (2026-10-18, run
+[39114177938](https://github.com/stardelt/stardelt-demos/actions/runs/39114177938)): **12m28s** wall
+clock — images 2m, install 9m, DAG run 2m20s, assertions 7s — with the DAG run
+`nyc_taxi_load / nightly-20261018T090858Z` succeeding in 140s and Trino reading back
+`38,310,226` rows in 12 monthly partitions (2.82M–3.52M each, summed from Iceberg's own partition
+metadata) and 12 snapshots. If a run is red, the job's last step dumps `kind/diagnostics.sh` —
+including the Airflow section (DAG runs, DAG import errors, every task pod's log) and the Superset
+section — so `gh run view --log-failed` says which part failed.
 
 The leg installs with `STARDELT_IMAGES="airflow superset"` (see `kind/up.sh`) and, for the full
 profile, applies the platform's own `manifests/s3-credentials.dev.yaml` — the Secret `make install`

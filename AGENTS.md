@@ -27,7 +27,8 @@ platform wiring.
 - `kind/demo.sh` — the WP-02 nightly/integration leg: full profile → Airflow
   `nyc_taxi_load` run → Trino assertions on the Iceberg table; driven by
   `.github/workflows/nightly.yml` (schedule, `workflow_dispatch`, and the
-  `nightly-demo` label on a PR). Needs a 16 GB node; ~30–60 min.
+  `nightly-demo` label on a PR). Needs a 16 GB node; ~13 min on a 4 vCPU runner
+  (install ~9 min, DAG run ~2.5 min).
 - `kind/build-images.sh` — builds + `kind load`s the stardelt images (airflow, superset,
   nova; kind has no registry). Takes an optional list of image names.
 - `dags/nyc_taxi_load.py` and `images/airflow/` — sample DAG + demo Airflow image. The
