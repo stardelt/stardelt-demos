@@ -11,6 +11,13 @@
 #   APP_PROFILE=full            ->  make -C <platform> install
 #                                   the above plus Airflow + Superset
 #   SLIM=1                      ->  forward SLIM=1 to install-core (small nodes)
+#   STARDELT_IMAGES=none        ->  do not build/kind-load the stardelt images
+#                                   (stardelt-nova is then not needed; Nova will
+#                                   not run — see kind/gate.sh, which uses this
+#                                   to test the data path without an image build)
+#   KIND_NODE_IMAGE=kindest/node:vX.Y.Z
+#                               ->  pin the kind node image (default: whatever
+#                                   the installed kind ships)
 #
 # The primary development environment is the Hetzner k3s cluster in
 # stardelt-platform/dev/hetzner-k3s; kind is the secondary/laptop path.
@@ -23,9 +30,11 @@ NAMESPACE="${NAMESPACE:-stardelt}"
 APP_PROFILE="${APP_PROFILE:-core}"
 SLIM="${SLIM:-}"
 IMAGE_TAG="${IMAGE_TAG:-dev}"
+STARDELT_IMAGES="${STARDELT_IMAGES:-build}"
+KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLATFORM_DIR="${STARDELT_PLATFORM_DIR:-$(cd "$REPO_ROOT/../stardelt-platform" && pwd)}"
-NOVA_DIR="${STARDELT_NOVA_DIR:-$(cd "$REPO_ROOT/../stardelt-nova" && pwd)}"
+PLATFORM_DIR="${STARDELT_PLATFORM_DIR:-$REPO_ROOT/../stardelt-platform}"
+NOVA_DIR="${STARDELT_NOVA_DIR:-$REPO_ROOT/../stardelt-nova}"
 
 log()  { printf '\033[1;34m▶\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m✓\033[0m %s\n' "$*"; }
@@ -36,8 +45,14 @@ ensure_cluster() {
   if kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
     ok "kind cluster '$CLUSTER' already exists"
   else
-    log "creating kind cluster '$CLUSTER'"
-    kind create cluster --config "$REPO_ROOT/kind/kind-config.yaml"
+    local image_args=()
+    if [[ -n "$KIND_NODE_IMAGE" ]]; then
+      image_args=(--image "$KIND_NODE_IMAGE")
+      log "creating kind cluster '$CLUSTER' (node image $KIND_NODE_IMAGE)"
+    else
+      log "creating kind cluster '$CLUSTER'"
+    fi
+    kind create cluster --config "$REPO_ROOT/kind/kind-config.yaml" --wait 180s "${image_args[@]}"
     ok "kind cluster created"
   fi
   kubectl cluster-info --context "kind-$CLUSTER" >/dev/null
@@ -90,14 +105,27 @@ pin_kind_images() {
 }
 
 main() {
+  case "$STARDELT_IMAGES" in
+    build|none) ;;
+    *) fail "unknown STARDELT_IMAGES '$STARDELT_IMAGES' (expected 'build' or 'none')" ;;
+  esac
+
   [ -d "$PLATFORM_DIR" ]        || fail "stardelt-platform sibling repo not found at $PLATFORM_DIR — clone github.com/stardelt/stardelt-platform next to this repo"
   [ -f "$PLATFORM_DIR/Makefile" ] || fail "no Makefile at $PLATFORM_DIR — update the stardelt-platform checkout (needs install-core)"
-  [ -d "$NOVA_DIR" ]            || fail "stardelt-nova sibling repo not found at $NOVA_DIR — clone github.com/stardelt/stardelt-nova next to this repo"
+  if [[ "$STARDELT_IMAGES" == "build" ]]; then
+    [ -d "$NOVA_DIR" ] || fail "stardelt-nova sibling repo not found at $NOVA_DIR — clone github.com/stardelt/stardelt-nova next to this repo (or set STARDELT_IMAGES=none to skip the stardelt images)"
+  fi
 
   ensure_cluster
-  build_stardelt_images
+  if [[ "$STARDELT_IMAGES" == "build" ]]; then
+    build_stardelt_images
+  else
+    warn "STARDELT_IMAGES=none — skipping the stardelt-owned images; Nova will not run from ghcr.io (for CI: see kind/gate.sh)"
+  fi
   install_stack
-  pin_kind_images
+  if [[ "$STARDELT_IMAGES" == "build" ]]; then
+    pin_kind_images
+  fi
 
   log "stack up ($APP_PROFILE) — run \`make smoke\` to validate"
   case "$APP_PROFILE" in

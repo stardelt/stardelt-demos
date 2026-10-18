@@ -21,6 +21,9 @@ platform wiring.
 - `kind/up.sh` — creates the kind cluster + namespace and delegates the install to
   `stardelt-platform` (`make install-core`, or `install` with `APP_PROFILE=full`).
 - `kind/smoke.sh` — Stage-1 acceptance: Trino → Iceberg → SeaweedFS round-trip.
+- `kind/gate.sh` + `kind/diagnostics.sh` — the WP-02 verification gate and its
+  failure dump; driven by `.github/workflows/verify.yml` (PRs, pushes to `main`,
+  `workflow_dispatch`). What it proves, and what it excludes, is in the README.
 - `kind/build-images.sh` — builds + `kind load`s the stardelt images (airflow, superset,
   nova; kind has no registry).
 - `dags/nyc_taxi_load.py` and `images/airflow/` — sample DAG + demo Airflow image.
@@ -43,6 +46,17 @@ make down        # delete the kind cluster (make clean = down + docker image pru
 Cheap local checks: `bash -n kind/*.sh` (CI runs `shellcheck` on the same files).
 `make up` needs Docker, kind, kubectl and helm (all checked by `make deps`).
 
+The verification gate (same scope in CI and locally):
+
+```bash
+bash kind/gate.sh          # kind + install-core SLIM=1 + readiness + smoke + restart re-read
+bash kind/diagnostics.sh   # dump pods/events/logs/helm after a red run
+gh workflow run verify.yml -f platform_ref=my-branch   # the CI job, installer ref selectable
+```
+
+`kind/gate.sh` runs `STARDELT_IMAGES=none` (CI builds no stardelt images, so Nova is out of
+scope) and fails loudly: no phase is skipped to keep a run green.
+
 ## Conventions
 
 - **PR-only.** Never push to `main`; branch off `origin/main` and keep PRs small.
@@ -58,4 +72,6 @@ Cheap local checks: `bash -n kind/*.sh` (CI runs `shellcheck` on the same files)
   deployment at the locally built `stardelt/nova:dev` image (kind has no registry).
 - `make smoke` requires a finished `make up` — it execs into the Trino coordinator pod.
 - Useful env vars: `APP_PROFILE` (`core` default, `full`), `SLIM=1`, `NAMESPACE`,
-  `CLUSTER`, `STARDELT_PLATFORM_DIR`, `STARDELT_NOVA_DIR`.
+  `CLUSTER`, `STARDELT_IMAGES` (`build` default, `none`), `KIND_NODE_IMAGE`,
+  `STARDELT_PLATFORM_DIR`, `STARDELT_NOVA_DIR`. `kind/gate.sh` also honours
+  `GATE_BUDGET_SECONDS` (default 1800).
