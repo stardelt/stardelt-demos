@@ -25,8 +25,11 @@ platform wiring.
   failure dump; driven by `.github/workflows/verify.yml` (PRs, pushes to `main`,
   `workflow_dispatch`). What it proves, and what it excludes, is in the README.
 - `kind/build-images.sh` — builds + `kind load`s the stardelt images (airflow, superset,
-  nova; kind has no registry).
-- `dags/nyc_taxi_load.py` and `images/airflow/` — sample DAG + demo Airflow image.
+  nova; kind has no registry). Takes an optional list of image names.
+- `dags/nyc_taxi_load.py` and `images/airflow/` — sample DAG + demo Airflow image. The
+  Dockerfile pins `AIRFLOW_VERSION`, which must match the appVersion of the airflow chart
+  pinned in `stardelt-platform`'s Makefile, and asserts both the version and the DAG's
+  imports at build time.
 
 Requires sibling checkouts of `stardelt-platform` and `stardelt-nova` next to this repo
 (override with `STARDELT_PLATFORM_DIR` / `STARDELT_NOVA_DIR`).
@@ -72,6 +75,14 @@ scope) and fails loudly: no phase is skipped to keep a run green.
   deployment at the locally built `stardelt/nova:dev` image (kind has no registry).
 - `make smoke` requires a finished `make up` — it execs into the Trino coordinator pod.
 - Useful env vars: `APP_PROFILE` (`core` default, `full`), `SLIM=1`, `NAMESPACE`,
-  `CLUSTER`, `STARDELT_IMAGES` (`build` default, `none`), `KIND_NODE_IMAGE`,
-  `STARDELT_PLATFORM_DIR`, `STARDELT_NOVA_DIR`. `kind/gate.sh` also honours
-  `GATE_BUDGET_SECONDS` (default 1800).
+  `CLUSTER`, `STARDELT_IMAGES` (`build` default, `none`, or a list such as
+  `"airflow superset"`), `KIND_NODE_IMAGE`, `STARDELT_PLATFORM_DIR`,
+  `STARDELT_NOVA_DIR`. `kind/gate.sh` also honours `GATE_BUDGET_SECONDS` (default 1800).
+- The full profile (`APP_PROFILE=full`) needs the `stardelt-s3-creds` Secret: the
+  platform's `make install-core` applies `manifests/s3-credentials.dev.yaml` itself,
+  `make install` does not — `kind/up.sh` applies it for the full profile (the manifest
+  is pinned to `namespace: stardelt`).
+- `APP_PROFILE=full` is currently blocked upstream, not here: `make install`'s
+  `--wait` deadlocks with the Airflow chart's post-install migration hook
+  (stardelt-platform#37). The Airflow pods sit in `wait-for-airflow-migrations`
+  until the hook — which helm only runs after they are ready — creates the schema.
