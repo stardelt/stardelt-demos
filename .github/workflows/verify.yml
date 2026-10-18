@@ -72,12 +72,12 @@ jobs:
       KIND_NODE_IMAGE: ${{ inputs.kind_node_image || 'kindest/node:v1.37.0' }}
     steps:
       - name: Check out stardelt-demos
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: stardelt-demos
 
       - name: Check out stardelt-platform (the installer under test)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: stardelt/stardelt-platform
           ref: ${{ inputs.platform_ref || 'main' }}
