@@ -76,12 +76,12 @@ kt -n "$NAMESPACE" get events --sort-by=.lastTimestamp | tail -n 60
 section "helm releases"
 {
   timeout 60 helm -n "$NAMESPACE" list --all || echo "(helm list failed)"
-  for rel in cnpg seaweedfs lakekeeper trino; do
+  for rel in cnpg seaweedfs lakekeeper trino airflow superset; do
     echo "--- helm status $rel"
     timeout 60 helm -n "$NAMESPACE" status "$rel" 2>&1 | head -n 20 || true
   done
   echo "--- helm history (failed/stuck releases)"
-  for rel in cnpg seaweedfs lakekeeper trino; do
+  for rel in cnpg seaweedfs lakekeeper trino airflow superset; do
     timeout 60 helm -n "$NAMESPACE" history "$rel" 2>&1 | tail -n 5 || true
   done
 }
@@ -101,9 +101,12 @@ for pod in $(ktq -n "$NAMESPACE" get pods -o jsonpath='{.items[?(@.status.phase=
   fi
 done
 
-section "logs (tail ${LOG_TAIL} per container, previous when restarted)"
+section "logs (tail ${LOG_TAIL} per container — init containers too, previous when restarted)"
 for pod in $(ktq -n "$NAMESPACE" get pods -o jsonpath='{.items[?(@.status.phase!="Succeeded")].metadata.name}'); do
-  for ctr in $(ktq -n "$NAMESPACE" get pod "$pod" -o jsonpath='{.spec.containers[*].name}'); do
+  # Init containers matter as much as app containers here: the Airflow pods wait
+  # on `wait-for-airflow-migrations`, and when the migration hook fails that
+  # container is the only place the reason is printed.
+  for ctr in $(ktq -n "$NAMESPACE" get pod "$pod" -o jsonpath='{.spec.initContainers[*].name} {.spec.containers[*].name}'); do
     echo "--- logs pod/$pod container/$ctr"
     kt -n "$NAMESPACE" logs "$pod" -c "$ctr" --tail="$LOG_TAIL" --prefix=false
     restarts="$(ktq -n "$NAMESPACE" get pod "$pod" -o jsonpath="{.status.containerStatuses[?(@.name=='$ctr')].restartCount}")"
@@ -113,6 +116,38 @@ for pod in $(ktq -n "$NAMESPACE" get pods -o jsonpath='{.items[?(@.status.phase!
     fi
   done
 done
+
+section "airflow (full profile / nightly demo leg)"
+{
+  echo "--- helm status airflow"
+  timeout 60 helm -n "$NAMESPACE" status airflow 2>&1 | head -n 20 || echo "(no airflow release)"
+  echo "--- deployments, statefulsets, jobs"
+  kt -n "$NAMESPACE" get deploy,statefulset,job -l tier=airflow -o wide
+  echo "--- pods (incl. KubernetesExecutor task pods)"
+  kt -n "$NAMESPACE" get pods -l tier=airflow -o wide
+  echo "--- DAG runs"
+  kt -n "$NAMESPACE" exec deploy/airflow-scheduler -c scheduler -- airflow dags list-runs -d nyc_taxi_load -o json 2>&1 | tail -n 40
+  echo "--- DAG import errors (empty = all DAGs parsed)"
+  kt -n "$NAMESPACE" exec deploy/airflow-scheduler -c scheduler -- airflow dags list-import-errors 2>&1 | tail -n 30
+  echo "--- task pod logs (latest per pod, tail ${LOG_TAIL})"
+  for pod in $(ktq -n "$NAMESPACE" get pods -l tier=airflow,component=worker -o jsonpath='{.items[*].metadata.name}'); do
+    echo "--- logs pod/$pod"
+    kt -n "$NAMESPACE" logs "$pod" --all-containers --tail="$LOG_TAIL" --prefix=false
+  done
+}
+
+section "superset (full profile; installed, readiness-only in the demo leg)"
+{
+  echo "--- helm status superset"
+  timeout 60 helm -n "$NAMESPACE" status superset 2>&1 | head -n 20 || echo "(no superset release)"
+  kt -n "$NAMESPACE" get deploy,statefulset,job -l app=superset -o wide
+  kt -n "$NAMESPACE" get pods -l app=superset -o wide
+  echo "--- logs (tail 40 each)"
+  for pod in $(ktq -n "$NAMESPACE" get pods -l app=superset -o jsonpath='{.items[*].metadata.name}'); do
+    echo "--- logs pod/$pod"
+    kt -n "$NAMESPACE" logs "$pod" --all-containers --tail=40 --prefix=false
+  done
+}
 
 section "trino: catalog config, coordinator health, last query failure"
 {
@@ -145,11 +180,19 @@ cat <<'EOF'
   reason (image pull, volume, probe, OOM).
 - Trino problems: the catalog config and /v1/info are printed above; the
   coordinator log lines filtered for errors follow it.
+- Airflow / the NYC-taxi DAG (nightly demo leg): the "airflow" section has the
+  DAG runs, the DAG import errors and every KubernetesExecutor task pod's log.
+  A task pod that is gone was deleted after success (delete_worker_pods); a
+  failed one is kept. `airflow tasks states-for-dag-run nyc_taxi_load <run_id>`
+  names the failing task, and its pod log says why.
+- Superset (installed by the full profile, readiness-only in the demo leg): its
+  init job and pods are in the "superset" section.
 - Nothing installed at all: check the "helm releases" section — a failing
   `helm upgrade --install` is reported there with its history.
-- Reproduce locally with the same scope as CI:
+- Reproduce locally with the same scope as the per-PR gate:
     STARDELT_IMAGES=none APP_PROFILE=core SLIM=1 bash kind/up.sh && bash kind/smoke.sh
-  or run the whole gate: bash kind/gate.sh
+  the whole gate: bash kind/gate.sh
+  or the nightly demo leg: bash kind/demo.sh
 EOF
 
 exit 0
