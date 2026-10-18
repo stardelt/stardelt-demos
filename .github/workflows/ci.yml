@@ -17,7 +17,7 @@ jobs:
         run: sudo apt-get install -y shellcheck
 
       - name: shellcheck kind scripts
-        run: shellcheck kind/up.sh kind/build-images.sh kind/smoke.sh
+        run: shellcheck kind/*.sh
 
       - name: Install hadolint
         run: |
