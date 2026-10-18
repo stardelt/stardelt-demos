@@ -7,9 +7,11 @@ FROM apache/airflow:slim-${AIRFLOW_VERSION}-python3.12
 USER airflow
 
 # Postgres provider (the slim image omits it; the chart's bundled DB needs
-# psycopg2), the FAB auth manager the chart configures, the Kubernetes provider
-# the chart's KubernetesExecutor needs, plus the Iceberg/Parquet clients the
-# NYC-taxi DAG imports inside its tasks.
+# psycopg2), the FAB auth manager the chart configures (with its `oauth` extra —
+# Flask-AppBuilder imports authlib for AUTH_TYPE=AUTH_OAUTH, and without it the
+# api-server dies at startup with ModuleNotFoundError: authlib), the Kubernetes
+# provider the chart's KubernetesExecutor needs, plus the Iceberg/Parquet clients
+# the NYC-taxi DAG imports inside its tasks.
 #
 # Installed with the image's *own* virtualenv pip and anchored on the base
 # image's Airflow version. Do not "simplify" this back to `pip install --user`:
@@ -35,6 +37,7 @@ RUN "$VIRTUAL_ENV/bin/python" -m pip install --no-cache-dir \
         "apache-airflow-providers-postgres" \
         "apache-airflow-providers-fab" \
         "apache-airflow-providers-cncf-kubernetes" \
+        "authlib==1.9.1" \
         "pyiceberg[s3fs,pyarrow]==0.12.0" \
         "pyarrow==26.0.0" \
         "httpx==0.28.1" \
@@ -42,7 +45,7 @@ RUN "$VIRTUAL_ENV/bin/python" -m pip install --no-cache-dir \
  # Airflow off the base image's version (see above) or if the DAG's imports are
  # missing. `pip check` catches a half-resolved environment.
  && "$VIRTUAL_ENV/bin/python" -c 'import sys, importlib.metadata as md; v = md.version("apache-airflow"); print("airflow", v); sys.exit(f"airflow {v} != the base image version {sys.argv[1]}") if v != sys.argv[1] else None' "${AIRFLOW_VERSION}" \
- && "$VIRTUAL_ENV/bin/python" -c 'import importlib.metadata as md, pyiceberg, pyarrow, pyarrow.parquet, httpx, psycopg2; print("DAG imports ok: pyiceberg", md.version("pyiceberg"), "pyarrow", md.version("pyarrow"), "httpx", md.version("httpx"))' \
+ && "$VIRTUAL_ENV/bin/python" -c 'import importlib.metadata as md, authlib, pyiceberg, pyarrow, pyarrow.parquet, httpx, psycopg2; print("DAG imports ok: pyiceberg", md.version("pyiceberg"), "pyarrow", md.version("pyarrow"), "httpx", md.version("httpx"))' \
  && "$VIRTUAL_ENV/bin/python" -m pip check
 
 COPY --chown=airflow:0 dags/ /opt/airflow/dags/
