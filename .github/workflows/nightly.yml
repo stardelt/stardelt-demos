@@ -115,6 +115,19 @@ jobs:
           free -m
           df -h / /var/lib/docker
 
+      # ─────────────────────── TEMPORARY, branch-only ────────────────────────
+      # Removed before this PR merges (see the PR description). The platform's
+      # superset values carry imagePullSecrets as bare strings, so `make install`
+      # cannot get past step 8 at all (stardelt-platform#41). Airflow is green as
+      # of #39; patching the *checkout* is the only way to exercise the rest of
+      # the chain (DAG run + Trino assertions) while #41 is open.
+      - name: TEMP — patch the platform checkout for stardelt-platform#41
+        run: |
+          sed -i 's/^  - ghcr-creds$/  - name: ghcr-creds/' \
+            stardelt-platform/helm-values/superset.yaml
+          grep -n -A 1 '^imagePullSecrets' stardelt-platform/helm-values/superset.yaml
+      # ───────────────────────────────────────────────────────────────────────
+
       - name: Nightly demo leg
         run: bash stardelt-demos/kind/demo.sh
 
