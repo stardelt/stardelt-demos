@@ -7,8 +7,12 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     groups:
-      all:
+      # Minor and patch together (they are routine and safe as a unit).
+      # Majors are deliberately NOT grouped: a framework major riding along with
+      # six small bumps is how a build breaks in a PR nobody can review.
+      minor-and-patch:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
   - package-ecosystem: docker
     directory: /images/airflow
     schedule:
@@ -16,5 +20,9 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     groups:
-      all:
+      # Minor and patch together (they are routine and safe as a unit).
+      # Majors are deliberately NOT grouped: a framework major riding along with
+      # six small bumps is how a build breaks in a PR nobody can review.
+      minor-and-patch:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
