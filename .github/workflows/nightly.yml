@@ -1,0 +1,123 @@
+name: Nightly demo
+
+# WP-02, integration tier — the demo leg. Proves, unattended, that the platform
+# installs with everything the NYC-taxi demo needs and that the demo delivers:
+#
+#   kind cluster → the stardelt-owned images the full profile runs are built
+#     here and kind-loaded (kind has no registry; CI has no ghcr credentials)
+#   → stardelt-platform `make install` (full profile: core stack + Airflow +
+#     Superset + Nova, with SLIM deliberately unset — the small-node overrides
+#     are core-only, and this is the install the maintainer's 8 GB node cannot
+#     run)
+#   → kind/smoke.sh: the core data path round-trips in the same cluster
+#   → Airflow: `nyc_taxi_load` is unpaused and triggered, and the DAG run must
+#     reach `success` (bounded — the leg's long pole)
+#   → Trino: the Iceberg table the DAG wrote is asserted — 12 monthly
+#     partitions, row-count bands, the canonical 20 columns, one snapshot per
+#     append. A green run prints the run id, the counts and the query output.
+#
+# Every stage is asserted in kind/demo.sh; nothing is skipped and the exit code
+# is the signal. On failure this workflow dumps diagnostics
+# (kind/diagnostics.sh: pods, events, describes, Airflow DAG runs and task pod
+# logs, Superset, helm history) so a red run says why.
+#
+# WHAT IT DELIBERATELY DOES NOT COVER (also in README.md → "Nightly demo leg")
+#   Nova                — not built here, so kind/demo.sh drops the Deployment
+#                         (its image is built from the stardelt-nova checkout).
+#   Superset            — installed by the full profile and asserted as ready
+#                         (release deployed, pods rolled out, init job done);
+#                         no dashboard or query is exercised.
+#   JupyterHub, ingress/TLS, OIDC login, the operator — other work packages.
+#
+# Runner budget: 4 vCPU / 16 GB, ~86 GB disk. Image builds are the cold cost
+# (two Dockerfiles, no layer cache); the DAG downloads ~630 MB from the TLC
+# CloudFront bucket and appends it to Iceberg, which is the long pole. The
+# in-script budget (DEMO_BUDGET_SECONDS) sits inside the 110-minute job
+# timeout, so a stuck leg fails loudly instead of hanging until the runner
+# kills it.
+on:
+  schedule:
+    # 03:10 UTC — the TLC files are static, so the exact minute does not matter;
+    # this is just an off-peak slot that does not collide with the per-PR gate.
+    - cron: "10 3 * * *"
+  workflow_dispatch:
+    inputs:
+      platform_ref:
+        description: stardelt-platform ref (branch, tag or sha) to install
+        default: main
+        type: string
+      kind_node_image:
+        description: kindest/node image to run the platform on (default pins the node image below)
+        default: ""
+        type: string
+      demo_budget_seconds:
+        description: in-script wall-clock budget for the whole leg
+        default: "4500"
+        type: string
+  pull_request:
+    # Opt-in only, and never part of the per-PR gate (that is verify.yml, ~5
+    # minutes): label a pull request `nightly-demo` to run this leg on it. The
+    # job below is skipped for every unlabeled PR, so the label is the only
+    # thing that can make a PR pay for a full-profile install.
+    types: [opened, reopened, labeled, synchronize]
+
+# The nightly never blocks or is blocked by the per-PR gate: different workflow,
+# own concurrency group, and it only ever runs on a schedule or by hand.
+concurrency:
+  group: nightly-demo
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  demo:
+    name: full profile + nyc_taxi DAG + Trino assertion
+    # Runs on the schedule and on demand; on a pull request only when the
+    # `nightly-demo` label is present (see the note above `on:`).
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'nightly-demo')
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    env:
+      CLUSTER: stardelt
+      NAMESPACE: stardelt
+      # Same sibling layout as a laptop: the leg delegates the install to the
+      # platform Makefile through kind/up.sh, so the demo path is what is tested.
+      STARDELT_PLATFORM_DIR: ${{ github.workspace }}/stardelt-platform
+      # Pinned so a runner-image bump cannot silently change the Kubernetes
+      # version the platform is verified against. Override per run with the input.
+      KIND_NODE_IMAGE: ${{ inputs.kind_node_image || 'kindest/node:v1.37.0' }}
+      DEMO_BUDGET_SECONDS: ${{ inputs.demo_budget_seconds || '4500' }}
+    steps:
+      - name: Check out stardelt-demos
+        uses: actions/checkout@v4
+        with:
+          path: stardelt-demos
+
+      - name: Check out stardelt-platform (the installer under test)
+        uses: actions/checkout@v4
+        with:
+          repository: stardelt/stardelt-platform
+          ref: ${{ inputs.platform_ref || 'main' }}
+          fetch-depth: 1
+          path: stardelt-platform
+
+      - name: Tool versions (for the record)
+        run: |
+          kind version
+          kubectl version --client=true
+          helm version --short
+          docker version --format 'docker server {{.Server.Version}}'
+          jq --version
+          echo "--- runner"
+          free -m
+          df -h / /var/lib/docker
+
+      - name: Nightly demo leg
+        run: bash stardelt-demos/kind/demo.sh
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: bash stardelt-demos/kind/diagnostics.sh
