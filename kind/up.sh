@@ -114,21 +114,7 @@ install_stack() {
 
   command -v make >/dev/null || fail "'make' is required to drive the stardelt-platform install"
 
-  # `make install` (full) expects the stardelt-s3-creds Secret to exist — the
-  # platform documents it as a prerequisite (the Airflow pods reference it, and
-  # the NYC-taxi DAG reads the object store with it). `make install-core`
-  # applies it itself; `make install` does not. So the demo applies the
-  # platform's own dev manifest here, exactly as a laptop user would. Delete
-  # this once the platform's `install` target applies it.
-  if [[ "$target" == "install" ]]; then
-    local creds="$PLATFORM_DIR/manifests/s3-credentials.dev.yaml"
-    [ -f "$creds" ] || fail "'make install' needs the stardelt-s3-creds Secret, but $creds is missing — update the stardelt-platform checkout"
-    # The platform manifest carries its own `namespace: stardelt`; kubectl rejects
-    # a mismatch rather than guessing, hence the explicit message.
-    kubectl -n "$NAMESPACE" apply -f "$creds" >/dev/null ||
-      fail "could not apply $creds — it is pinned to namespace 'stardelt', so the full profile needs NAMESPACE=stardelt (or apply the Secret by hand)"
-    ok "S3 credentials Secret applied (platform manifest $(basename "$creds"))"
-  fi
+  # The platform's install targets generate their own credentials (scripts/s3-secrets.sh).
 
   log "delegating install to stardelt-platform (make $target, APP_PROFILE=$APP_PROFILE)"
   if [[ "$target" == "install-core" && "$SLIM" == "1" ]]; then

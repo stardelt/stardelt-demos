@@ -21,7 +21,7 @@ help:
 	@echo "  build-images     — build + kind-load the stardelt-owned container images"
 	@echo "  airflow-trigger  — unpause and trigger the nyc_taxi_load DAG"
 	@echo "  airflow-ui       — port-forward Airflow API server to localhost:8088"
-	@echo "  superset-ui      — port-forward Superset to localhost:8089 (admin/admin)"
+	@echo "  superset-ui      — port-forward Superset to localhost:8089 (admin; password: kubectl -n stardelt get secret superset-admin -o jsonpath='{.data.password}' | base64 -d)"
 	@echo "  pf               — open port-forwards for Trino (8081) and Lakekeeper (8181)"
 	@echo "  logs             — tail logs across the stardelt namespace"
 	@echo "  down             — delete the kind cluster"
@@ -67,7 +67,7 @@ airflow-ui:
 	kubectl -n $(NAMESPACE) port-forward svc/airflow-api-server 8088:8080
 
 superset-ui:
-	@echo "Superset login: admin / admin  — http://localhost:8089"
+	@echo "Superset login: admin, password from: kubectl -n stardelt get secret superset-admin -o jsonpath='{.data.password}' | base64 -d  — http://localhost:8089"
 	kubectl -n $(NAMESPACE) port-forward svc/superset 8089:8088
 
 clean: down

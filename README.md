@@ -85,8 +85,8 @@ make airflow-trigger
 make pf
 
 # Per-service UIs (full profile)
-make airflow-ui    # http://localhost:8088  (admin / admin)
-make superset-ui   # http://localhost:8089  (admin / admin)
+make airflow-ui    # http://localhost:8088  (admin; password: kubectl -n stardelt get secret airflow-admin -o jsonpath='{.data.password}' | base64 -d)
+make superset-ui   # http://localhost:8089  (admin; password: kubectl -n stardelt get secret superset-admin -o jsonpath='{.data.password}' | base64 -d)
 ```
 
 Services exposed via NodePort on the kind cluster:
@@ -198,10 +198,8 @@ metadata) and 12 snapshots. If a run is red, the job's last step dumps `kind/dia
 including the Airflow section (DAG runs, DAG import errors, every task pod's log) and the Superset
 section — so `gh run view --log-failed` says which part failed.
 
-The leg installs with `STARDELT_IMAGES="airflow superset"` (see `kind/up.sh`) and, for the full
-profile, applies the platform's own `manifests/s3-credentials.dev.yaml` — the Secret `make install`
-documents as a prerequisite but does not apply itself (`make install-core` does). Both are noted
-where they happen, and the second one goes away when the platform's `install` target applies it.
+The leg installs with `STARDELT_IMAGES="airflow superset"` (see `kind/up.sh`). The platform's
+install targets generate their own credentials, so nothing is applied by hand.
 
 ## Tear down
 
