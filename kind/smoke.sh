@@ -3,7 +3,6 @@
 set -euo pipefail
 
 NAMESPACE="${NAMESPACE:-stardelt}"
-RELEASE="${TRINO_RELEASE:-trino}"
 
 if ! kubectl -n "$NAMESPACE" get pods -l "app.kubernetes.io/name=trino,app.kubernetes.io/component=coordinator" \
      --field-selector=status.phase=Running 2>/dev/null | grep -q Running; then
