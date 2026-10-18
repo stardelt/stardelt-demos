@@ -1,6 +1,9 @@
 ARG AIRFLOW_VERSION=3.2.0
 FROM apache/airflow:slim-${AIRFLOW_VERSION}-python3.12
 
+# Non-root, as upstream ships it (UID 50000); the numeric id is not needed here
+# and pinning it would fork the base image's user database.
+# hadolint ignore=DL3066
 USER airflow
 
 # Postgres provider (slim image omits it; chart's bundled DB needs psycopg2)
