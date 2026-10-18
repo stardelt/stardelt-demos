@@ -11,10 +11,13 @@
 #   APP_PROFILE=full            ->  make -C <platform> install
 #                                   the above plus Airflow + Superset
 #   SLIM=1                      ->  forward SLIM=1 to install-core (small nodes)
-#   STARDELT_IMAGES=none        ->  do not build/kind-load the stardelt images
+#   STARDELT_IMAGES=build|none|"<names>"
+#                               ->  build|kind-load the stardelt images:
+#                                   `build` = all three (default), `none` = skip
 #                                   (stardelt-nova is then not needed; Nova will
-#                                   not run — see kind/gate.sh, which uses this
-#                                   to test the data path without an image build)
+#                                   not run — see kind/gate.sh), or a list of
+#                                   `airflow superset nova` to build a subset
+#                                   (kind/demo.sh needs the first two only).
 #   KIND_NODE_IMAGE=kindest/node:vX.Y.Z
 #                               ->  pin the kind node image (default: whatever
 #                                   the installed kind ships)
@@ -64,9 +67,40 @@ ensure_cluster() {
   ok "namespace '$NAMESPACE' ready"
 }
 
+# ---------------------------------------------------------------------------
+# stardelt-owned images
+# ---------------------------------------------------------------------------
+
+# Resolve STARDELT_IMAGES into the list of image names to build:
+#   build -> all three, none -> none, otherwise a list ("airflow superset nova",
+#   comma or space separated). kind/demo.sh uses a list to skip nova.
+IMAGE_NAMES=()
+resolve_images() {
+  case "$STARDELT_IMAGES" in
+    build)    IMAGE_NAMES=(airflow superset nova) ;;
+    none|"")  IMAGE_NAMES=() ;;
+    *)        read -r -a IMAGE_NAMES <<<"${STARDELT_IMAGES//,/ }" ;;
+  esac
+  local name
+  for name in ${IMAGE_NAMES[@]+"${IMAGE_NAMES[@]}"}; do
+    case "$name" in
+      airflow|superset|nova) ;;
+      *) fail "unknown STARDELT_IMAGES entry '$name' (expected 'build', 'none' or a list of: airflow superset nova)" ;;
+    esac
+  done
+}
+
+images_include() {  # images_include <name>
+  local name
+  for name in ${IMAGE_NAMES[@]+"${IMAGE_NAMES[@]}"}; do
+    [[ "$name" == "$1" ]] && return 0
+  done
+  return 1
+}
+
 build_stardelt_images() {
-  log "building stardelt-owned container images"
-  "$REPO_ROOT/kind/build-images.sh"
+  log "building stardelt-owned container images: ${IMAGE_NAMES[*]}"
+  "$REPO_ROOT/kind/build-images.sh" "${IMAGE_NAMES[@]}"
   ok "images loaded into kind/$CLUSTER"
 }
 
@@ -80,6 +114,22 @@ install_stack() {
 
   command -v make >/dev/null || fail "'make' is required to drive the stardelt-platform install"
 
+  # `make install` (full) expects the stardelt-s3-creds Secret to exist — the
+  # platform documents it as a prerequisite (the Airflow pods reference it, and
+  # the NYC-taxi DAG reads the object store with it). `make install-core`
+  # applies it itself; `make install` does not. So the demo applies the
+  # platform's own dev manifest here, exactly as a laptop user would. Delete
+  # this once the platform's `install` target applies it.
+  if [[ "$target" == "install" ]]; then
+    local creds="$PLATFORM_DIR/manifests/s3-credentials.dev.yaml"
+    [ -f "$creds" ] || fail "'make install' needs the stardelt-s3-creds Secret, but $creds is missing — update the stardelt-platform checkout"
+    # The platform manifest carries its own `namespace: stardelt`; kubectl rejects
+    # a mismatch rather than guessing, hence the explicit message.
+    kubectl -n "$NAMESPACE" apply -f "$creds" >/dev/null ||
+      fail "could not apply $creds — it is pinned to namespace 'stardelt', so the full profile needs NAMESPACE=stardelt (or apply the Secret by hand)"
+    ok "S3 credentials Secret applied (platform manifest $(basename "$creds"))"
+  fi
+
   log "delegating install to stardelt-platform (make $target, APP_PROFILE=$APP_PROFILE)"
   if [[ "$target" == "install-core" && "$SLIM" == "1" ]]; then
     warn "SLIM=1 — applying the small-node overrides"
@@ -92,7 +142,9 @@ install_stack() {
 
 # The platform manifest points Nova at ghcr.io with a pull secret. kind has no
 # registry, so retarget the Deployment at the locally built, kind-loaded image.
+# Only when Nova is one of the images this run built.
 pin_kind_images() {
+  images_include nova || return 0
   local image="stardelt/nova:$IMAGE_TAG"
   if kubectl -n "$NAMESPACE" get deploy/nova >/dev/null 2>&1; then
     log "pinning nova to the locally built image ($image)"
@@ -105,32 +157,27 @@ pin_kind_images() {
 }
 
 main() {
-  case "$STARDELT_IMAGES" in
-    build|none) ;;
-    *) fail "unknown STARDELT_IMAGES '$STARDELT_IMAGES' (expected 'build' or 'none')" ;;
-  esac
+  resolve_images
 
   [ -d "$PLATFORM_DIR" ]        || fail "stardelt-platform sibling repo not found at $PLATFORM_DIR — clone github.com/stardelt/stardelt-platform next to this repo"
   [ -f "$PLATFORM_DIR/Makefile" ] || fail "no Makefile at $PLATFORM_DIR — update the stardelt-platform checkout (needs install-core)"
-  if [[ "$STARDELT_IMAGES" == "build" ]]; then
-    [ -d "$NOVA_DIR" ] || fail "stardelt-nova sibling repo not found at $NOVA_DIR — clone github.com/stardelt/stardelt-nova next to this repo (or set STARDELT_IMAGES=none to skip the stardelt images)"
+  if images_include nova; then
+    [ -d "$NOVA_DIR" ] || fail "stardelt-nova sibling repo not found at $NOVA_DIR — clone github.com/stardelt/stardelt-nova next to this repo (or drop nova from STARDELT_IMAGES)"
   fi
 
   ensure_cluster
-  if [[ "$STARDELT_IMAGES" == "build" ]]; then
+  if (( ${#IMAGE_NAMES[@]} > 0 )); then
     build_stardelt_images
   else
     warn "STARDELT_IMAGES=none — skipping the stardelt-owned images; Nova will not run from ghcr.io (for CI: see kind/gate.sh)"
   fi
   install_stack
-  if [[ "$STARDELT_IMAGES" == "build" ]]; then
-    pin_kind_images
-  fi
+  pin_kind_images
 
   log "stack up ($APP_PROFILE) — run \`make smoke\` to validate"
   case "$APP_PROFILE" in
     core) log "core profile: no Airflow/Superset — use APP_PROFILE=full to include them" ;;
-    full) log "trigger the demo pipeline with \`make airflow-trigger\`" ;;
+    full) log "trigger the demo pipeline with \`make airflow-trigger\` (or run the whole leg: \`make demo\`)" ;;
   esac
 }
 
