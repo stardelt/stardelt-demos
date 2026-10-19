@@ -2,3 +2,6 @@
 .github/
 *.md
 .kind-data/
+tests/
+**/__pycache__/
+.pytest_cache/
