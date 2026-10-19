@@ -10,7 +10,8 @@ USER airflow
 # psycopg2), the FAB auth manager the chart configures (with its `oauth` extra —
 # Flask-AppBuilder imports authlib for AUTH_TYPE=AUTH_OAUTH, and without it the
 # api-server dies at startup with ModuleNotFoundError: authlib), the Kubernetes
-# provider the chart's KubernetesExecutor needs, plus the Iceberg/Parquet clients
+# provider the chart's KubernetesExecutor needs, the Amazon provider (Airflow's S3
+# task-log handler: the object store speaks S3, so task logs outlive the task pod), plus the Iceberg/Parquet clients
 # the NYC-taxi DAG imports inside its tasks.
 #
 # Installed with the image's *own* virtualenv pip and anchored on the base
@@ -37,6 +38,7 @@ RUN "$VIRTUAL_ENV/bin/python" -m pip install --no-cache-dir \
         "apache-airflow-providers-postgres" \
         "apache-airflow-providers-fab" \
         "apache-airflow-providers-cncf-kubernetes" \
+        "apache-airflow-providers-amazon" \
         "authlib==1.9.1" \
         "pyiceberg[s3fs,pyarrow]==0.12.0" \
         "pyarrow==26.0.0" \
@@ -45,7 +47,7 @@ RUN "$VIRTUAL_ENV/bin/python" -m pip install --no-cache-dir \
  # Airflow off the base image's version (see above) or if the DAG's imports are
  # missing. `pip check` catches a half-resolved environment.
  && "$VIRTUAL_ENV/bin/python" -c 'import sys, importlib.metadata as md; v = md.version("apache-airflow"); print("airflow", v); sys.exit(f"airflow {v} != the base image version {sys.argv[1]}") if v != sys.argv[1] else None' "${AIRFLOW_VERSION}" \
- && "$VIRTUAL_ENV/bin/python" -c 'import importlib.metadata as md, authlib, pyiceberg, pyarrow, pyarrow.parquet, httpx, psycopg2; print("DAG imports ok: pyiceberg", md.version("pyiceberg"), "pyarrow", md.version("pyarrow"), "httpx", md.version("httpx"))' \
+ && "$VIRTUAL_ENV/bin/python" -c 'import importlib.metadata as md, authlib, pyiceberg, pyarrow, pyarrow.parquet, httpx, psycopg2, airflow.providers.amazon.aws.hooks.s3; print("DAG imports ok: pyiceberg", md.version("pyiceberg"), "pyarrow", md.version("pyarrow"), "httpx", md.version("httpx"))' \
  && "$VIRTUAL_ENV/bin/python" -m pip check
 
 COPY --chown=airflow:0 dags/ /opt/airflow/dags/

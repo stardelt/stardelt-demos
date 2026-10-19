@@ -75,3 +75,24 @@ jobs:
           tags: ghcr.io/stardelt/airflow:demo
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # The push job above runs only on main, so without this a pull request would merge an
+  # image that has never been built.
+  image-airflow-check:
+    name: Build airflow demo image (no push)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: lint
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build ghcr.io/stardelt/airflow:demo (not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: images/airflow/Dockerfile
+          push: false
+          cache-from: type=gha
