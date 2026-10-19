@@ -92,12 +92,12 @@ jobs:
       DEMO_BUDGET_SECONDS: ${{ inputs.demo_budget_seconds || '4500' }}
     steps:
       - name: Check out stardelt-demos
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: stardelt-demos
 
       - name: Check out stardelt-platform (the installer under test)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: stardelt/stardelt-platform
           ref: ${{ inputs.platform_ref || 'main' }}
