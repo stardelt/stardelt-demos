@@ -3,6 +3,10 @@
 Pure: no Airflow, no network, no clock. The rules mirror `PipelineSpec::validate` in the
 operator (unique task names, known dependencies, no cycles, a `sql` task has a statement),
 because the API server's schema rules cannot see a dependency cycle.
+
+The same holds for the principal: a pipeline that names one is checked against the
+`ServicePrincipal` resources of its namespace (the caller passes them in), so no pipeline can
+run as another group's principal.
 """
 from __future__ import annotations
 
@@ -14,10 +18,21 @@ _SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 # `Replace` has no Airflow equivalent; it is treated like `Forbid` (one run at a time).
 _ACTIVE_RUNS = {"Allow": 16, "Forbid": 1, "Replace": 1}
 DEFAULT_RETRY_DELAY_S = 60
+# The platform's shared pipeline principal (phase J0). It belongs to no group, so it is never the
+# principal a pipeline with an `ownerGroup` may name.
+DEFAULT_PRINCIPAL = "pipeline-runner"
 
 
 class PlanError(ValueError):
     """The resource cannot become a DAG; the message names the reason."""
+
+
+@dataclass(frozen=True)
+class PrincipalRef:
+    """The `ServicePrincipal` a pipeline runs as: its name and the Secret holding its credentials."""
+
+    name: str
+    secret_name: str
 
 
 @dataclass(frozen=True)
@@ -40,6 +55,8 @@ class PipelinePlan:
     max_active_runs: int
     params: dict[str, str]
     run_as: str | None
+    owner_group: str | None
+    principal: PrincipalRef | None
     tasks: tuple[TaskPlan, ...]
 
 
@@ -57,8 +74,12 @@ def dag_id(namespace: str, name: str) -> str:
     return f"{namespace}__{name}"
 
 
-def plan(resource: dict, namespace: str) -> PipelinePlan:
-    """Validate `resource` and return its plan, or raise `PlanError`."""
+def plan(resource: dict, namespace: str, principals: dict[str, dict] | None = None) -> PipelinePlan:
+    """Validate `resource` and return its plan, or raise `PlanError`.
+
+    `principals` are the `ServicePrincipal` resources of the namespace by name; `None` means the
+    namespace has none, so a pipeline that names one is refused.
+    """
     name = resource.get("metadata", {}).get("name")
     if not name:
         raise PlanError("the resource has no name")
@@ -108,8 +129,56 @@ def plan(resource: dict, namespace: str) -> PipelinePlan:
         max_active_runs=_ACTIVE_RUNS[spec.get("concurrency") or "Forbid"],
         params=dict(spec.get("params") or {}),
         run_as=spec.get("runAs"),
+        owner_group=spec.get("ownerGroup"),
+        principal=_principal(spec, principals or {}),
         tasks=tuple(tasks),
     )
+
+
+def _principal(spec: dict, principals: dict[str, dict]) -> PrincipalRef | None:
+    """Which principal the tasks run as; `None` is the platform's default.
+
+    Every mixture that would let one group run as another group's principal is refused: the
+    principal must be a `ServicePrincipal` of the namespace, owned by the pipeline's group and
+    ready, and its credentials Secret must exist.
+    """
+    run_as = spec.get("runAs")
+    owner_group = spec.get("ownerGroup")
+    if run_as is None and owner_group is None:
+        return None
+    if run_as is None:
+        raise PlanError(
+            "a pipeline with an owner needs runAs: the principal of its group "
+            f"(pipeline-{owner_group})"
+        )
+    if owner_group is None:
+        raise PlanError("runAs needs ownerGroup: say which group owns this pipeline")
+    # The shared default principal belongs to no group, so naming it can never make it one's own
+    # principal — even if a resource of that name existed.
+    resource = None if run_as == DEFAULT_PRINCIPAL else principals.get(run_as)
+    if resource is None:
+        raise PlanError(f"runAs {run_as} is not a ServicePrincipal of this namespace")
+    principal_group = (resource.get("spec") or {}).get("ownerGroup")
+    if principal_group != owner_group:
+        raise PlanError(
+            f"runAs {run_as} belongs to the group {principal_group}, "
+            f"this pipeline is owned by {owner_group}"
+        )
+    status = resource.get("status") or {}
+    if status.get("ready") is not True:
+        raise PlanError(f"runAs {run_as} is not ready: {_ready_message(status)}")
+    secret_name = status.get("secretName")
+    if not secret_name:
+        raise PlanError(f"runAs {run_as} has no credentials Secret yet")
+    return PrincipalRef(run_as, secret_name)
+
+
+def _ready_message(status: dict) -> str:
+    """The message of the principal's `Ready` condition, or the sentence for an empty status."""
+    for condition in status.get("conditions") or ():
+        if condition.get("type") == "Ready" and condition.get("message"):
+            return condition["message"]
+    return "no status yet"
 
 
 def _reject_cycles(tasks: list[TaskPlan]) -> None:
