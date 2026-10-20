@@ -12,14 +12,24 @@ Config via environment variables on the worker pod, sourced from K8s
 Secret `stardelt-s3-creds` and ConfigMap `stardelt-runtime`:
   CATALOG_URI, CATALOG_WAREHOUSE, S3_ENDPOINT, S3_ACCESS_KEY,
   S3_SECRET_KEY, S3_REGION, YEARS.
+
+The catalog signs in as `svc-catalog-airflow` when `CATALOG_CLIENT_ID`,
+`CATALOG_CLIENT_SECRET` and `CATALOG_TOKEN_URL` are present (Secret
+`svc-catalog-airflow`); see `stardelt_pipelines.catalog_properties`.
 """
 from __future__ import annotations
 
 import io
 import os
+import sys
 from datetime import datetime
 
 from airflow.sdk import dag, task
+
+# The support package sits next to this file. Airflow does not put the DAGs folder on the
+# import path in every process (dag-processor, task pod, tests), so do it here.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from stardelt_pipelines.catalog_properties import catalog_properties  # noqa: E402
 
 TLC_URL = "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_{year:04d}-{month:02d}.parquet"
 NAMESPACE = "nyc_taxi"
@@ -65,18 +75,14 @@ def _arrow_schema():
 
 def _catalog():
     from pyiceberg.catalog.rest import RestCatalog
-    return RestCatalog(
-        name="warehouse",
-        **{
-            "uri": os.environ["CATALOG_URI"],
-            "warehouse": os.environ.get("CATALOG_WAREHOUSE", "warehouse"),
-            "s3.endpoint": os.environ["S3_ENDPOINT"],
-            "s3.access-key-id": os.environ["S3_ACCESS_KEY"],
-            "s3.secret-access-key": os.environ["S3_SECRET_KEY"],
-            "s3.region": os.environ.get("S3_REGION", "us-east-1"),
-            "s3.path-style-access": "true",
-        },
-    )
+    properties = catalog_properties(os.environ)
+    if "credential" in properties:
+        # The client id is a name, not a secret; the secret and any token never leave
+        # `properties`. This line is how a task pod log shows who the catalog call ran as.
+        print(f"catalog: signing in as {os.environ['CATALOG_CLIENT_ID']}")
+    else:
+        print("catalog: no catalog client on this pod, calling anonymously")
+    return RestCatalog(name="warehouse", **properties)
 
 
 def _ensure_table():
