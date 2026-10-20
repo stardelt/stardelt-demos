@@ -39,7 +39,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install test dependencies
-        run: python -m pip install pytest "httpx==0.28.1"
+        # The principal's Pod override is built with the Kubernetes client models, at the same
+        # version range the Airflow Kubernetes provider (and so the demo image) resolves.
+        run: python -m pip install pytest "httpx==0.28.1" "kubernetes>=35.0.0,!=36.0.0,<37.0.0"
 
       - name: pytest
         run: python -m pytest -q tests
