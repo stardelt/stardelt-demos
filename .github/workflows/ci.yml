@@ -8,16 +8,10 @@ on:
 
 jobs:
   lint:
-    name: Lint (shellcheck + hadolint)
+    name: Lint (hadolint)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install shellcheck
-        run: sudo apt-get install -y shellcheck
-
-      - name: shellcheck kind scripts
-        run: shellcheck kind/*.sh
 
       - name: Install hadolint
         run: |

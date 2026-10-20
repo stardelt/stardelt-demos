@@ -1,4 +1,3 @@
-.kind-data/
 .kube/
 *.kubeconfig
 .env
