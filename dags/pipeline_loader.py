@@ -9,6 +9,10 @@ it against the namespace's `ServicePrincipal` resources, and each of the pipelin
 the principal's credentials through a `secretKeyRef` (see `stardelt_pipelines.principal`). The
 loader itself never reads a Secret.
 
+A stopped run (the executor sends SIGTERM) cancels the running statement: the task deletes the
+statement's `nextUri`, so the next poll reports `USER_CANCELED` and the task fails with that
+engine error instead of leaving the query running behind it.
+
 Environment of the dag-processor and the task pods:
   PIPELINE_TRINO_URL        base URL of the query engine, e.g. https://trino:8443
   PIPELINE_TRINO_CA_FILE    CA bundle that signed the engine's certificate (optional)
@@ -45,6 +49,7 @@ API_PLURAL = os.environ.get("PIPELINE_API_PLURAL", "pipelines")
 API_VERSION = "v1alpha1"
 PRINCIPAL_PLURAL = "serviceprincipals"
 NAMESPACE_FILE = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+TRINO_SOURCE = "stardelt-pipeline"
 
 
 def _namespace() -> str:
@@ -88,9 +93,28 @@ def _run_task(task: dict, params: dict, **context) -> None:
             os.environ["PIPELINE_CLIENT_SECRET"],
             client=http,
         )
-        outcome = trino.run_statement(
-            sql, base_url=os.environ["PIPELINE_TRINO_URL"], token=token, client=http
-        )
+        # What a stop needs: the id as soon as the engine has it, and the URI to DELETE. Without
+        # the cancel the statement outlives the task (and can still commit a write).
+        current: dict[str, str | None] = {"query_id": None, "next_uri": None}
+
+        def _started(query_id: str, next_uri: str | None) -> None:
+            if current["query_id"] != query_id:
+                log.info("query %s submitted", query_id)
+            current["query_id"] = query_id
+            current["next_uri"] = next_uri
+
+        # The executor SIGTERMs the task when the run is stopped; the handler cancels the
+        # statement and the next poll turns it into a real `USER_CANCELED` error.
+        handler = trino.cancel_handler(http, token=token, current=current, source=TRINO_SOURCE)
+        with trino.cancel_on_termination(handler):
+            outcome = trino.run_statement(
+                sql,
+                base_url=os.environ["PIPELINE_TRINO_URL"],
+                token=token,
+                client=http,
+                source=TRINO_SOURCE,
+                on_started=_started,
+            )
     log.info(
         "task %s finished: query %s, %s rows, update count %s",
         task["name"],
