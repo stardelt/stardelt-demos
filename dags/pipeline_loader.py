@@ -20,6 +20,10 @@ Environment of the dag-processor and the task pods:
   PIPELINE_CLIENT_ID        the default principal, `pipeline-runner` (a pipeline with a group
                             principal overrides it in its own task pods)
   PIPELINE_CLIENT_SECRET    its secret (from a Kubernetes Secret, never in a file)
+  PIPELINE_NOTEBOOK_IMAGE   the notebook image a `notebook` task's own pod runs (platform#316)
+  PIPELINE_NOTEBOOK_BUCKET  the versioned bucket of published notebooks and executed copies
+  PIPELINE_NOTEBOOK_S3_CONN the Airflow connection that pre-signs the notebook's GET and PUT
+  PIPELINE_NOTEBOOK_TRINO_CA_SECRET  the Secret mounted into the notebook pod for the CA
   PIPELINE_API_GROUP / PIPELINE_API_PLURAL   defaults `stardelt.io` / `pipelines` (tests override)
 """
 from __future__ import annotations
@@ -39,6 +43,7 @@ from airflow.timetables.trigger import CronTriggerTimetable
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from stardelt_pipelines import trino  # noqa: E402
 from stardelt_pipelines.expand import expand  # noqa: E402
+from stardelt_pipelines.notebook import NotebookPodOperator  # noqa: E402
 from stardelt_pipelines.plan import DEFAULT_PRINCIPAL, PlanError, plan  # noqa: E402
 from stardelt_pipelines.principal import principal_pod_override  # noqa: E402
 
@@ -143,6 +148,24 @@ def _build_dag(p) -> DAG:
     )
     operators = {}
     for t in p.tasks:
+        if t.kind == "notebook":
+            # A notebook runs in a pod of its own: the worker only orchestrates it, so the pod
+            # override that hands the worker its credentials is not this task's business.
+            if p.principal is None:  # the plan refuses this; a silent default would run as nobody
+                raise PlanError(f"notebook task `{t.name}` has no principal")
+            operators[t.name] = NotebookPodOperator(
+                task_id=t.name,
+                pipeline=p.name,
+                owner_group=p.owner_group,
+                notebook=t.notebook,
+                object_version=t.object_version,
+                task_params=dict(t.notebook_params),
+                pipeline_params=p.params,
+                principal_secret=p.principal.secret_name,
+                namespace=namespace,
+                dag=dag,
+            )
+            continue
         operators[t.name] = PythonOperator(
             task_id=t.name,
             python_callable=_run_task,

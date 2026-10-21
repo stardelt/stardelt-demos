@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from stardelt_pipelines.plan import PlanError, PrincipalRef, parse_duration, plan
 
@@ -206,3 +208,112 @@ def test_the_default_name_is_not_a_group_principal():
         )
     assert str(error.value) == "runAs pipeline-runner is not a ServicePrincipal of this namespace"
 
+
+
+# --- the notebook task: a published object version, run as the group's principal ----------------
+
+
+def notebook(
+    name="report", file="Report - daily.ipynb", version="version-1", params=None, **extra
+):
+    config = {"notebook": file, "objectVersion": version}
+    if params is not None:
+        config["params"] = params
+    task = {"name": name, "kind": "notebook", "config": config}
+    task.update(extra)
+    return task
+
+
+def owned(*tasks, **spec):
+    """A pipeline with the group principal the notebook task needs."""
+    spec.setdefault("ownerGroup", "analytics")
+    spec.setdefault("runAs", "pipeline-analytics")
+    return resource(tasks=list(tasks), **spec), "team", {"pipeline-analytics": principal()}
+
+
+def test_plan_accepts_a_notebook_task():
+    p = plan(
+        *owned(
+            sql("prepare"),
+            notebook("report", params='{"days": "3"}', dependsOn=["prepare"]),
+            params={"region": "eu"},
+        )
+    )
+    assert p.name == "daily"
+    prepare, report = p.tasks
+    assert prepare.notebook is None and prepare.object_version is None
+    assert prepare.notebook_params == ()
+    assert report.notebook == "Report - daily.ipynb"
+    assert report.object_version == "version-1"
+    assert report.notebook_params == (("days", "3"),)
+    assert report.depends_on == ("prepare",)
+    assert (p.owner_group, p.principal.name) == ("analytics", "pipeline-analytics")
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        None,
+        {},
+        {"notebook": "report.ipynb"},
+        {"objectVersion": "version-1"},
+        {"notebook": "report.txt", "objectVersion": "version-1"},
+        {"notebook": "/report.ipynb", "objectVersion": "version-1"},
+        {"notebook": "report.ipynb", "objectVersion": ""},
+        {"notebook": "report.ipynb", "objectVersion": "two words"},
+        {"notebook": "report.ipynb", "objectVersion": "v" * 129},
+    ],
+)
+def test_plan_refuses_missing_file_or_version(config):
+    task = {"name": "report", "kind": "notebook"}
+    if config is not None:
+        task["config"] = config
+    with pytest.raises(PlanError) as error:
+        plan(*owned(task))
+    assert str(error.value) == (
+        "a notebook task needs config.notebook (a .ipynb file name) and config.objectVersion "
+        "(the published version)"
+    )
+
+
+def test_refuses_extra_config_keys():
+    task = {
+        "name": "report",
+        "kind": "notebook",
+        "config": {
+            "notebook": "report.ipynb",
+            "objectVersion": "version-1",
+            "path": "sales/report.ipynb",
+        },
+    }
+    with pytest.raises(PlanError) as error:
+        plan(*owned(task))
+    assert str(error.value) == (
+        "notebook tasks accept only notebook, objectVersion and params (found `path`)"
+    )
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        "not json",
+        '["days"]',
+        '{"days": 3}',
+        '{"days": null}',
+        json.dumps({f"p{index}": "1" for index in range(33)}),
+    ],
+)
+def test_refuses_bad_params(params):
+    with pytest.raises(PlanError) as error:
+        plan(*owned(notebook(params=params)))
+    assert str(error.value) == (
+        "notebook params must be a JSON object string of string values, at most 32 keys"
+    )
+
+
+def test_refuses_notebook_without_owner_group():
+    with pytest.raises(PlanError) as error:
+        plan(resource(tasks=[notebook()]), "team")
+    assert str(error.value) == (
+        "a notebook task runs as the group principal of its pipeline: set ownerGroup and runAs"
+    )
