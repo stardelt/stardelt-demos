@@ -20,7 +20,8 @@ real node (a full install needs about 8 vCPU / 16 GB). The single-node kind demo
   builds the DAG; a pipeline with an `ownerGroup` runs as that group's `ServicePrincipal`.
 - `dags/stardelt_pipelines/` — the loader's pure parts, tested without Airflow:
   `plan.py` (resource → plan, mirroring the operator's `PipelineSpec::validate`), `expand.py`
-  (template placeholders), `principal.py` (pod override), `trino.py` (run + cancel a statement).
+  (template placeholders), `principal.py` (pod override), `notebook.py` (a `notebook` task's own
+  pod, its pre-signed URLs and environment), `trino.py` (run + cancel a statement).
 - `dags/nyc_taxi_load.py` — the NYC-taxi sample pipeline: 2023 TLC parquet files → Iceberg through
   Trino.
 - `images/airflow/Dockerfile` — the image the platform's Airflow deployment runs: Airflow, the
