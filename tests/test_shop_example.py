@@ -2,6 +2,7 @@
 
 import csv
 import re
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -52,3 +53,17 @@ def test_the_profile_reads_the_token_from_the_environment_and_holds_no_secret():
     text = (SHOP / "profiles.yml").read_text()
     assert "env_var('DBT_TRINO_JWT'" in text
     assert "eyJ" not in text and "Bearer" not in text
+
+
+def demo_command(*arguments):
+    done = subprocess.run(["make", "-n", "-C", str(SHOP), "demo", *arguments], capture_output=True, text=True, check=True)
+    return done.stdout
+
+
+def test_changing_the_scale_is_a_full_refresh_because_the_gold_table_is_incremental():
+    assert "--full-refresh" not in demo_command()
+    assert "--full-refresh" not in demo_command("SCALE=1000000")
+    command = demo_command("SCALE=1000000", "FULL=1")
+    assert "--full-refresh" in command and "scale: 1000000" in command
+    readme = (SHOP / "README.md").read_text()
+    assert "make demo SCALE=1000000 FULL=1" in readme
