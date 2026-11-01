@@ -1,0 +1,18 @@
+# The token comes from the environment, never from this file. In a platform notebook terminal:
+#   export DBT_TRINO_HOST=trino.stardelt.svc.cluster.local DBT_TRINO_JWT="$TRINO_TOKEN"
+# A token lives five minutes: start the run right after you set it.
+shop:
+  target: dev
+  outputs:
+    dev:
+      type: trino
+      method: jwt
+      jwt_token: "{{ env_var('DBT_TRINO_JWT', 'not-set') }}"
+      host: "{{ env_var('DBT_TRINO_HOST', 'localhost') }}"
+      port: 8443
+      http_scheme: https
+      cert: "{{ env_var('DBT_TRINO_CA', '/etc/stardelt/trino-ca/ca.crt') }}"
+      database: bronze
+      schema: shop
+      threads: 4
+      retries: 2
