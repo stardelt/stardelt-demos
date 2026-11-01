@@ -31,7 +31,8 @@ make demo
 ```
 
 A token lives five minutes: set it and run right away; the whole run must finish inside that time (at the default scale it does,
-see below). `make demo SCALE=1000000` builds a million lines. Then look at the results:
+see below). `make demo SCALE=1000000 FULL=1` builds a million lines (`FULL=1` rebuilds the incremental `daily_revenue` as well: a later run
+recomputes only the last three days, so change the scale only together with `FULL=1`). Then look at the results:
 
 ```sql
 select * from gold.shop.daily_revenue order by order_date desc limit 7;
