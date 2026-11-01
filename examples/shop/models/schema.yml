@@ -1,0 +1,61 @@
+version: 2
+
+models:
+  - name: order_lines
+    description: The generated order lines (bronze). One row per line.
+    columns:
+      - name: order_line_id
+        data_tests: [unique, not_null]
+  - name: stg_customers
+    description: Customers with clean names and upper-case country codes (silver view).
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+      - name: segment
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [retail, business, enterprise]
+  - name: stg_products
+    description: Products with a decimal price (silver view).
+    columns:
+      - name: product_id
+        data_tests: [unique, not_null]
+  - name: stg_order_lines
+    description: Order lines as the marts read them (silver view).
+    columns:
+      - name: order_line_id
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: customer_id
+      - name: product_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: product_id
+      - name: quantity
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5]
+                quote: false
+  - name: daily_revenue
+    description: Revenue per day (gold, incremental merge).
+    columns:
+      - name: order_date
+        data_tests: [unique, not_null]
+  - name: customer_ltv
+    description: Lifetime value, rank and cumulative share per customer (gold).
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+  - name: product_mix
+    description: Units, revenue and revenue share per product, ranked inside its category (gold).
+    columns:
+      - name: product_id
+        data_tests: [unique, not_null]

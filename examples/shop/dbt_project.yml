@@ -1,0 +1,39 @@
+name: shop
+version: "1.0.0"
+config-version: 2
+profile: shop
+
+model-paths: [models]
+seed-paths: [seeds]
+test-paths: [tests]
+macro-paths: [macros]
+
+# How many order lines the generator builds inside Trino. A multiple of 1000.
+# 200 000 runs in seconds on the dev node; try 5 000 000 for a heavier demonstration.
+vars:
+  scale: 200000
+
+# The layers are the catalogs: seeds and the generated lines go to bronze, the staging views
+# to silver, the marts to gold. Every layer uses the schema `shop`.
+seeds:
+  shop:
+    +database: bronze
+    +schema: shop
+    +column_types:
+      id: integer
+      unit_price: "decimal(10,2)"
+
+models:
+  shop:
+    bronze:
+      +database: bronze
+      +schema: shop
+      +materialized: table
+    staging:
+      +database: silver
+      +schema: shop
+      +materialized: view
+    marts:
+      +database: gold
+      +schema: shop
+      +materialized: table
