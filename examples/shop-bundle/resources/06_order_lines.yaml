@@ -1,0 +1,5 @@
+name: shop-06-lines
+sqlFile: sql/06_order_lines.sql
+params:
+  schema: "${var.schema}"
+  scale: "${var.scale}"

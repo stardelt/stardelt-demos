@@ -1,0 +1,4 @@
+name: shop-07-stg-cust
+sqlFile: sql/07_stg_customers.sql
+params:
+  schema: "${var.schema}"

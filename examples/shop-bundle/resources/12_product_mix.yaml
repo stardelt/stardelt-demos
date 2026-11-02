@@ -1,0 +1,4 @@
+name: shop-12-mix
+sqlFile: sql/12_product_mix.sql
+params:
+  schema: "${var.schema}"

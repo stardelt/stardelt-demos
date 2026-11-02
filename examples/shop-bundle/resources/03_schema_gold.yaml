@@ -1,0 +1,4 @@
+name: shop-03-gold
+sqlFile: sql/03_schema_gold.sql
+params:
+  schema: "${var.schema}"

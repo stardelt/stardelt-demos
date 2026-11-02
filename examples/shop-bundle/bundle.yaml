@@ -1,0 +1,22 @@
+bundle:
+  name: shop
+  ownerGroup: demo
+variables:
+  schema:
+    default: shop
+    description: the schema in bronze, silver and gold that holds the tables of the example
+  scale:
+    default: 200000
+    description: how many order lines to generate; a multiple of 1000
+include: [resources/*.yaml]
+files: [sql/*.sql]
+requires:
+  connections: []
+targets:
+  dev:
+    mode: development
+    variables: {schema: shop_dev, scale: 200000}
+  prod:
+    mode: production
+    variables: {schema: shop, scale: 200000}
+    runAs: pipeline-demo
