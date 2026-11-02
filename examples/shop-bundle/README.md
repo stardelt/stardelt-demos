@@ -88,6 +88,26 @@ drop schema bronze.shop_dev;
   merging the last three days.
 - Seeds are `values` lists inside two statements (`sql/04_customers.sql`, `sql/05_products.sql`), generated from the CSV files of
   `examples/shop/seeds`.
-- The statements were checked for syntax only (parsed with the Trino dialect) and the bundle with `stardelt bundle validate`.
-  Nobody has run this example, or the dbt version, against a live cluster yet: the first run is the check (demos#31, slice A),
-  and a failure is a bug in this example, file it. Times and memory are recorded here after that run, never guessed.
+- The twelve statements were run in order against a local Trino 480 (with in-memory catalogs standing in for `bronze`, `silver` and
+  `gold`, so `create or replace table` was run as drop and create) on 2026-11-02, and the checks below held. They were NOT run
+  on a platform instance yet (Iceberg tables behind the catalog, the group's permissions, the Airflow loader): the first run
+  there is the check (demos#31, slice A), and a failure is a bug in this example, file it. Times and memory are recorded here
+  after that run, never guessed.
+
+## What you should see
+
+The data is built from hashes of the line number, so the numbers are the same on every run at the default `scale` of 200 000
+(replace `shop_dev` by `shop` for the `prod` target):
+
+```sql
+select count(*), sum(quantity), min(order_date), max(order_date) from silver.shop_dev.stg_order_lines;
+-- 200000, 600224, 2025-01-01, 2025-12-31
+select count(*), sum(units), sum(revenue) from gold.shop_dev.daily_revenue;
+-- 365, 600224, 36536658.10   (the units equal those of the lines; no day has a negative revenue)
+select count(*) from gold.shop_dev.customer_ltv;      -- 200
+select count(*) from gold.shop_dev.product_mix;       -- 30
+select customer_name, lifetime_value from gold.shop_dev.customer_ltv where value_rank = 1;
+-- Customer 053, 202135.50
+```
+
+Any other number after a run with the default `scale` means a statement did not do what it should.
