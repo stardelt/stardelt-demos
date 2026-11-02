@@ -53,3 +53,6 @@ Run `make demo` a second time: `daily_revenue` is merged, not rebuilt. `make tea
   slices of stardelt-demos#31.
 - **Status:** the SQL parses as Trino SQL and the project parses in dbt, but nobody has run it against the live cluster yet. The first
   live run is the check; a failure is a bug in this example, file it.
+
+Without a terminal on the cluster: `examples/shop-bundle` is the same shop as a bundle of twelve SQL pipelines, published and run
+with `stardelt bundle deploy` and `stardelt bundle run`.

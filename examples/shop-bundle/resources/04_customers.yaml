@@ -1,0 +1,4 @@
+name: shop-04-customers
+sqlFile: sql/04_customers.sql
+params:
+  schema: "${var.schema}"

@@ -1,0 +1,35 @@
+-- The seed products.csv of the dbt shop, 30 rows, as one statement.
+create or replace table bronze.${params.schema}.products as
+select id, name, category, unit_price
+from (values
+    (1, 'Product 01', 'garden', cast(7.20 as decimal(10, 2))),
+    (2, 'Product 02', 'games', cast(10.90 as decimal(10, 2))),
+    (3, 'Product 03', 'office', cast(14.60 as decimal(10, 2))),
+    (4, 'Product 04', 'kitchen', cast(18.30 as decimal(10, 2))),
+    (5, 'Product 05', 'books', cast(22.00 as decimal(10, 2))),
+    (6, 'Product 06', 'garden', cast(25.70 as decimal(10, 2))),
+    (7, 'Product 07', 'games', cast(29.40 as decimal(10, 2))),
+    (8, 'Product 08', 'office', cast(33.10 as decimal(10, 2))),
+    (9, 'Product 09', 'kitchen', cast(36.80 as decimal(10, 2))),
+    (10, 'Product 10', 'books', cast(40.50 as decimal(10, 2))),
+    (11, 'Product 11', 'garden', cast(44.20 as decimal(10, 2))),
+    (12, 'Product 12', 'games', cast(47.90 as decimal(10, 2))),
+    (13, 'Product 13', 'office', cast(51.60 as decimal(10, 2))),
+    (14, 'Product 14', 'kitchen', cast(55.30 as decimal(10, 2))),
+    (15, 'Product 15', 'books', cast(59.00 as decimal(10, 2))),
+    (16, 'Product 16', 'garden', cast(62.70 as decimal(10, 2))),
+    (17, 'Product 17', 'games', cast(66.40 as decimal(10, 2))),
+    (18, 'Product 18', 'office', cast(70.10 as decimal(10, 2))),
+    (19, 'Product 19', 'kitchen', cast(73.80 as decimal(10, 2))),
+    (20, 'Product 20', 'books', cast(77.50 as decimal(10, 2))),
+    (21, 'Product 21', 'garden', cast(81.20 as decimal(10, 2))),
+    (22, 'Product 22', 'games', cast(84.90 as decimal(10, 2))),
+    (23, 'Product 23', 'office', cast(88.60 as decimal(10, 2))),
+    (24, 'Product 24', 'kitchen', cast(92.30 as decimal(10, 2))),
+    (25, 'Product 25', 'books', cast(96.00 as decimal(10, 2))),
+    (26, 'Product 26', 'garden', cast(99.70 as decimal(10, 2))),
+    (27, 'Product 27', 'games', cast(103.40 as decimal(10, 2))),
+    (28, 'Product 28', 'office', cast(107.10 as decimal(10, 2))),
+    (29, 'Product 29', 'kitchen', cast(110.80 as decimal(10, 2))),
+    (30, 'Product 30', 'books', cast(114.50 as decimal(10, 2)))
+) as t(id, name, category, unit_price)

@@ -1,0 +1,4 @@
+name: shop-10-revenue
+sqlFile: sql/10_daily_revenue.sql
+params:
+  schema: "${var.schema}"
