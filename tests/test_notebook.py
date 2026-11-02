@@ -153,6 +153,24 @@ def test_pod_env_has_no_s3_names_and_no_secret_values(monkeypatch):
     assert canary not in values and "AKIA-CANARY" not in values
 
 
+def test_the_kernel_timeout_of_the_loader_reaches_the_pod(monkeypatch):
+    set_contract(monkeypatch)
+    monkeypatch.setenv("PIPELINE_NOTEBOOK_KERNEL_TIMEOUT", " 300 ")
+    env = pod_env(run_date="2026-10-21", run_id=RUN_ID, params={}, principal_secret="sp-pipeline-analytics")
+    by_name = {item.name: item for item in env}
+    assert by_name["NOTEBOOK_KERNEL_TIMEOUT"].value == "300"
+
+
+def test_no_kernel_timeout_variable_adds_nothing_to_the_pod(monkeypatch):
+    set_contract(monkeypatch)
+    monkeypatch.delenv("PIPELINE_NOTEBOOK_KERNEL_TIMEOUT", raising=False)
+    env = pod_env(run_date="2026-10-21", run_id=RUN_ID, params={}, principal_secret="sp-pipeline-analytics")
+    assert "NOTEBOOK_KERNEL_TIMEOUT" not in [item.name for item in env]
+    monkeypatch.setenv("PIPELINE_NOTEBOOK_KERNEL_TIMEOUT", "  ")
+    env = pod_env(run_date="2026-10-21", run_id=RUN_ID, params={}, principal_secret="sp-pipeline-analytics")
+    assert "NOTEBOOK_KERNEL_TIMEOUT" not in [item.name for item in env]
+
+
 # --- the operator -------------------------------------------------------------------------------
 
 

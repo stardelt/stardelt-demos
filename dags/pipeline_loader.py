@@ -24,6 +24,7 @@ Environment of the dag-processor and the task pods:
   PIPELINE_NOTEBOOK_BUCKET  the versioned bucket of published notebooks and executed copies
   PIPELINE_NOTEBOOK_S3_CONN the Airflow connection that pre-signs the notebook's GET and PUT
   PIPELINE_NOTEBOOK_TRINO_CA_SECRET  the Secret mounted into the notebook pod for the CA
+  PIPELINE_NOTEBOOK_KERNEL_TIMEOUT  seconds a notebook pod waits for its kernel (optional, 30 to 900, default 180)
   PIPELINE_API_GROUP / PIPELINE_API_PLURAL   defaults `stardelt.io` / `pipelines` (tests override)
 """
 from __future__ import annotations
