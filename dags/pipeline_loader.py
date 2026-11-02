@@ -43,6 +43,7 @@ from airflow.timetables.trigger import CronTriggerTimetable
 # import path in every process (dag-processor, task pod, tests), so do it here.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from stardelt_pipelines import trino  # noqa: E402
+from stardelt_pipelines.access import dag_access  # noqa: E402
 from stardelt_pipelines.expand import expand  # noqa: E402
 from stardelt_pipelines.notebook import NotebookPodOperator  # noqa: E402
 from stardelt_pipelines.plan import DEFAULT_PRINCIPAL, PlanError, plan  # noqa: E402
@@ -131,6 +132,7 @@ def _run_task(task: dict, params: dict, **context) -> None:
 
 
 def _build_dag(p) -> DAG:
+    access = dag_access(p.owner_group)
     dag = DAG(
         dag_id=p.dag_id,
         schedule=CronTriggerTimetable(p.cron, timezone=p.timezone) if p.cron else None,
@@ -139,8 +141,13 @@ def _build_dag(p) -> DAG:
         is_paused_upon_creation=False,
         max_active_runs=p.max_active_runs,
         dagrun_timeout=timedelta(seconds=p.timeout_s) if p.timeout_s else None,
-        default_args={"retries": p.retries, "retry_delay": timedelta(seconds=p.retry_delay_s)},
-        tags=["stardelt", "pipeline"],
+        default_args={
+            "owner": access["owner"],
+            "retries": p.retries,
+            "retry_delay": timedelta(seconds=p.retry_delay_s),
+        },
+        tags=["stardelt", "pipeline", *access["tags"]],
+        access_control=access["access_control"],
     )
     # The credentials of a group's principal reach the pods of that pipeline only: every other
     # DAG keeps the default principal the deployment sets.
