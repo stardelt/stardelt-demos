@@ -40,6 +40,7 @@ IMAGE_ENV = "PIPELINE_NOTEBOOK_IMAGE"
 BUCKET_ENV = "PIPELINE_NOTEBOOK_BUCKET"
 S3_CONN_ENV = "PIPELINE_NOTEBOOK_S3_CONN"
 TRINO_CA_SECRET_ENV = "PIPELINE_NOTEBOOK_TRINO_CA_SECRET"
+KERNEL_TIMEOUT_ENV = "PIPELINE_NOTEBOOK_KERNEL_TIMEOUT"
 # What a run id may keep: everything else becomes `_`, so a key stays one path segment.
 _RUN_ID_CHARS = frozenset(string.ascii_letters + string.digits + "_.:+-")
 
@@ -103,9 +104,11 @@ def pod_env(
     `NOTEBOOK_PARAMS` is the merged parameter object (sorted, so the pod spec is stable);
     the principal's `client-id` and `client-secret` come from its Secret through `secretKeyRef`
     (nothing secret passes through Python). The engine and identity endpoints come from the
-    loader's own environment.
+    loader's own environment. When the loader's environment sets `PIPELINE_NOTEBOOK_KERNEL_TIMEOUT`
+    (seconds), the pod gets it as `NOTEBOOK_KERNEL_TIMEOUT`, how long papermill waits for the kernel
+    on a busy node (the wrapper checks the range and defaults to 180); unset, the pod gets nothing.
     """
-    return [
+    env = [
         k8s.V1EnvVar(name="NOTEBOOK_PARAMS", value=json.dumps(dict(params), sort_keys=True)),
         k8s.V1EnvVar(name="NOTEBOOK_RUN_DATE", value=run_date),
         k8s.V1EnvVar(name="NOTEBOOK_RUN_ID", value=run_id),
@@ -116,6 +119,10 @@ def pod_env(
         _secret_env("PIPELINE_CLIENT_SECRET", principal_secret, "client-secret"),
         k8s.V1EnvVar(name="STARDELT_QUERY_IDS", value=QUERY_IDS_FILE),
     ]
+    kernel_timeout = (os.environ.get(KERNEL_TIMEOUT_ENV) or "").strip()
+    if kernel_timeout:
+        env.append(k8s.V1EnvVar(name="NOTEBOOK_KERNEL_TIMEOUT", value=kernel_timeout))
+    return env
 
 
 def _secret_env(name: str, secret: str, key: str) -> k8s.V1EnvVar:
