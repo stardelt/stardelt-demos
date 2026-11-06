@@ -19,6 +19,7 @@ developed against.
 | `dags/nyc_taxi_load.py` | The NYC-taxi sample pipeline: downloads the 2023 TLC trip files and appends them to an Iceberg table through Trino |
 | `dags/pipeline_loader.py` | One Airflow DAG per `Pipeline` resource of the namespace (scheduled jobs, phase J0) |
 | `dags/stardelt_pipelines/` | The loader's pure parts — `plan`, `expand`, `principal`, `trino` — unit-tested without Airflow |
+| `examples/` | The shop and the PEGELONLINE example |
 | `images/airflow/Dockerfile` | The image the platform's Airflow deployment runs: Airflow, the providers and clients the DAGs need, and the DAGs themselves |
 | `tests/` | pytest for the loader's pure parts |
 | `Makefile` | Helpers for a running cluster: `pf`, `logs`, `airflow-trigger`, `airflow-ui`, `superset-ui` |

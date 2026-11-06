@@ -1,0 +1,61 @@
+apiVersion: stardelt.io/v1alpha1
+kind: Pipeline
+metadata:
+  name: pegelonline-hourly
+  namespace: stardelt
+  labels: { app.kubernetes.io/part-of: stardelt }
+spec:
+  ownerGroup: stardelt-users
+  runAs: pipeline-stardelt-users
+  schedule:
+    cron: "23 * * * *"          # twenty-three minutes past the hour, after the ingest
+    timezone: Europe/Berlin
+  tasks:
+    - name: schema-silver
+      kind: sql
+      sql: "CREATE SCHEMA IF NOT EXISTS shared.silver"
+    - name: schema-gold
+      kind: sql
+      sql: "CREATE SCHEMA IF NOT EXISTS shared.gold"
+    - name: silver
+      kind: sql
+      dependsOn: [schema-silver]
+      sql: |
+        CREATE OR REPLACE TABLE shared.silver.pegelonline_measurements AS
+        SELECT station_uuid, station_number, station_name, water, agency, km,
+               latitude, longitude, timeseries, unit, measured_at, measurement_value,
+               state_mnw_mhw, state_nsw_hsw, ingested_at
+        FROM (
+          SELECT *, row_number() OVER (
+                   PARTITION BY station_uuid, timeseries, measured_at
+                   ORDER BY ingested_at DESC) AS rn
+          FROM shared.bronze.pegelonline_measurements
+        )
+        WHERE rn = 1
+    - name: gold-latest
+      kind: sql
+      dependsOn: [silver, schema-gold]
+      sql: |
+        CREATE OR REPLACE TABLE shared.gold.pegelonline_station_latest AS
+        SELECT station_uuid, station_name, water, timeseries, unit, measured_at,
+               measurement_value, state_mnw_mhw, state_nsw_hsw
+        FROM (
+          SELECT *, row_number() OVER (
+                   PARTITION BY station_uuid, timeseries
+                   ORDER BY measured_at DESC) AS rn
+          FROM shared.silver.pegelonline_measurements
+        )
+        WHERE rn = 1
+    - name: gold-hourly
+      kind: sql
+      dependsOn: [silver, schema-gold]
+      sql: |
+        CREATE OR REPLACE TABLE shared.gold.pegelonline_station_hourly AS
+        SELECT station_uuid, station_name, water, timeseries,
+               date_trunc('hour', measured_at) AS measured_hour,
+               avg(measurement_value) AS avg_value,
+               min(measurement_value) AS min_value,
+               max(measurement_value) AS max_value,
+               count(*) AS samples
+        FROM shared.silver.pegelonline_measurements
+        GROUP BY 1, 2, 3, 4, 5
