@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from stardelt_pipelines.pegelonline import COLUMNS, arrow_schema, arrow_table, rows_from
+from stardelt_pipelines.pegelonline import COLUMNS, arrow_schema, arrow_table, kafka_record, rows_from
 
 FIXTURE = [
     {
@@ -144,3 +144,15 @@ def test_arrow_table_carries_the_declared_nullability():
         expected = {name: nullable for name, _spec, nullable in COLUMNS}[field.name]
         assert field.nullable is expected, field.name
     assert isinstance(table, pa.Table)
+
+
+def test_kafka_record_is_one_json_message_with_utc_timestamps():
+    import json
+
+    rows = rows_from(FIXTURE)
+    message = json.loads(kafka_record(rows[0], datetime(2026, 11, 6, 22, 0)))
+    assert message["station_uuid"] == rows[0]["station_uuid"]
+    assert message["timeseries"] == rows[0]["timeseries"]
+    assert message["measured_at"] == "2026-11-06T21:45:00Z"
+    assert message["ingested_at"] == "2026-11-06T22:00:00Z"
+    assert isinstance(message["measurement_value"], float)

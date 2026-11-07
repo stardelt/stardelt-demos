@@ -43,11 +43,12 @@ RUN "$VIRTUAL_ENV/bin/python" -m pip install --no-cache-dir \
         "pyiceberg[s3fs,pyarrow,pyiceberg-core]==0.12.0" \
         "pyarrow==26.0.0" \
         "httpx==0.28.1" \
+        "kafka-python==3.0.13" \
  # A silently wrong image is worse than a red build: fail if the install moved
  # Airflow off the base image's version (see above) or if the DAG's imports are
  # missing. `pip check` catches a half-resolved environment.
  && "$VIRTUAL_ENV/bin/python" -c 'import sys, importlib.metadata as md; v = md.version("apache-airflow"); print("airflow", v); sys.exit(f"airflow {v} != the base image version {sys.argv[1]}") if v != sys.argv[1] else None' "${AIRFLOW_VERSION}" \
- && "$VIRTUAL_ENV/bin/python" -c 'import importlib.metadata as md, authlib, pyiceberg, pyiceberg_core, pyarrow, pyarrow.parquet, httpx, psycopg2, airflow.providers.amazon.aws.hooks.s3; print("DAG imports ok: pyiceberg", md.version("pyiceberg"), "pyiceberg-core", md.version("pyiceberg-core"), "pyarrow", md.version("pyarrow"), "httpx", md.version("httpx"))' \
+ && "$VIRTUAL_ENV/bin/python" -c 'import importlib.metadata as md, authlib, pyiceberg, pyiceberg_core, pyarrow, pyarrow.parquet, httpx, kafka, psycopg2, airflow.providers.amazon.aws.hooks.s3; print("DAG imports ok: pyiceberg", md.version("pyiceberg"), "pyiceberg-core", md.version("pyiceberg-core"), "pyarrow", md.version("pyarrow"), "httpx", md.version("httpx"), "kafka", md.version("kafka-python"))' \
  && "$VIRTUAL_ENV/bin/python" -m pip check
 
 COPY --chown=airflow:0 dags/ /opt/airflow/dags/
