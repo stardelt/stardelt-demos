@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from stardelt_pipelines.pegelonline import rows_from
+from stardelt_pipelines.pegelonline import COLUMNS, arrow_schema, arrow_table, rows_from
 
 FIXTURE = [
     {
@@ -92,3 +92,55 @@ def test_no_timeseries_or_missing_measurement_contribute_nothing():
         "CELLE:WT",
         "DRESDEN:W",
     ]
+
+
+def test_arrow_columns_match_the_table_schema_order_and_nullability():
+    """The ten required columns are the ones the Iceberg schema marks `required=True`.
+
+    pyiceberg 0.12 refuses an append whose arrow field is nullable where the table field is
+    required, and that refusal is the whole PEGELONLINE failure of stardelt-demos#48.
+    """
+    rows = rows_from(FIXTURE)
+    assert len(rows) == 3
+    assert [name for name, _spec, _nullable in COLUMNS] == [
+        "station_uuid",
+        "station_number",
+        "station_name",
+        "water",
+        "agency",
+        "km",
+        "latitude",
+        "longitude",
+        "timeseries",
+        "unit",
+        "measured_at",
+        "measurement_value",
+        "state_mnw_mhw",
+        "state_nsw_hsw",
+        "ingested_at",
+    ]
+    required = [name for name, _spec, nullable in COLUMNS if not nullable]
+    assert required == [
+        "station_uuid",
+        "station_number",
+        "station_name",
+        "water",
+        "agency",
+        "timeseries",
+        "unit",
+        "measured_at",
+        "measurement_value",
+        "ingested_at",
+    ]
+
+
+def test_arrow_table_carries_the_declared_nullability():
+    pytest = __import__("pytest")
+    pa = pytest.importorskip("pyarrow")
+    table = arrow_table(rows_from(FIXTURE), datetime(2026, 11, 7, 1, 0))
+    assert table.schema == arrow_schema()
+    assert [f.name for f in table.schema] == [name for name, _s, _n in COLUMNS]
+    for field in table.schema:
+        expected = {name: nullable for name, _spec, nullable in COLUMNS}[field.name]
+        assert field.nullable is expected, field.name
+    assert isinstance(table, pa.Table)

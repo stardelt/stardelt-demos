@@ -52,6 +52,45 @@ def rows_from(payload: list[dict]) -> list[dict]:
     return rows
 
 
+# The arrow columns of `arrow_table`, in the table's order: (name, arrow type, nullable).
+# `nullable` mirrors the Iceberg schema that `pegelonline_hourly._ensure_table` declares —
+# pyiceberg refuses the whole append when an arrow field is nullable where the table field is
+# required ("Mismatch in fields", stardelt-demos#48). Keep the two lists in step.
+COLUMNS: tuple[tuple[str, str, bool], ...] = (
+    ("station_uuid", "string", False),
+    ("station_number", "string", False),
+    ("station_name", "string", False),
+    ("water", "string", False),
+    ("agency", "string", False),
+    ("km", "float64", True),
+    ("latitude", "float64", True),
+    ("longitude", "float64", True),
+    ("timeseries", "string", False),
+    ("unit", "string", False),
+    ("measured_at", "timestamp", False),
+    ("measurement_value", "float64", False),
+    ("state_mnw_mhw", "string", True),
+    ("state_nsw_hsw", "string", True),
+    ("ingested_at", "timestamp", False),
+)
+
+
+def arrow_schema():
+    """The pyarrow schema for the table: required columns are `nullable=False`.
+
+    `pa.table({...})` infers every field as nullable, which pyiceberg 0.12 rejects against the
+    table's required fields; the append needs this schema explicitly.
+    """
+    import pyarrow as pa
+
+    def field_type(spec: str):
+        return pa.timestamp("us") if spec == "timestamp" else getattr(pa, spec)()
+
+    return pa.schema(
+        [pa.field(name, field_type(spec), nullable=nullable) for name, spec, nullable in COLUMNS]
+    )
+
+
 def arrow_table(rows: list[dict], ingested_at: datetime):
     import pyarrow as pa
 
@@ -105,5 +144,6 @@ def arrow_table(rows: list[dict], ingested_at: datetime):
             "state_mnw_mhw": pa.array(state_mnw_mhw, type=pa.string()),
             "state_nsw_hsw": pa.array(state_nsw_hsw, type=pa.string()),
             "ingested_at": pa.array(ingested_at_col, type=pa.timestamp("us")),
-        }
+        },
+        schema=arrow_schema(),
     )
