@@ -1,0 +1,16 @@
+apiVersion: stardelt.io/v1alpha1
+kind: StreamApp
+metadata:
+  name: pegelonline
+  labels: {app.kubernetes.io/part-of: stardelt, stardelt.io/demo: pegelonline}
+spec:
+  source:
+    topic: pegelonline.measurements      # connectionRef absent: the platform's own bus (operator#311)
+    format: json
+  sink:
+    catalog: mobility
+    table: bronze.pegelonline_stream
+    mode: merge
+    mergeKeys: [station_uuid, timeseries, measured_at]   # the producer's key, stable across runs
+  ownerGroup: mobility-analytics
+  restartPolicy: always

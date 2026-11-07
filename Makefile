@@ -19,6 +19,7 @@ help:
 	@echo "  airflow-trigger  — unpause and trigger the nyc_taxi_load DAG"
 	@echo "  airflow-ui       — port-forward Airflow API server to localhost:8088"
 	@echo "  superset-ui      — port-forward Superset to localhost:8089"
+	@echo "  stream           — apply the PEGELONLINE StreamApp (demos#52)"
 	@echo
 	@echo "Env vars:"
 	@echo "  NAMESPACE              — namespace to target (default: stardelt)"
@@ -36,6 +37,11 @@ logs:
 airflow-trigger:
 	kubectl -n $(NAMESPACE) exec deploy/airflow-scheduler -c scheduler -- airflow dags unpause nyc_taxi_load
 	kubectl -n $(NAMESPACE) exec deploy/airflow-scheduler -c scheduler -- airflow dags trigger nyc_taxi_load
+
+stream:
+	kubectl -n $(NAMESPACE) apply -f examples/pegelonline/streamapp.yaml
+	kubectl -n $(NAMESPACE) get streamapp pegelonline -o jsonpath='{.status.phase}{"\n"}'
+	kubectl -n $(NAMESPACE) get sparkapplication pegelonline
 
 airflow-ui:
 	kubectl -n $(NAMESPACE) port-forward svc/airflow-api-server 8088:8080
