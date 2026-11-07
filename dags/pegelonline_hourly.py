@@ -9,11 +9,12 @@ from airflow.sdk import dag, task
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from stardelt_pipelines.catalog_properties import catalog_properties  # noqa: E402
-from stardelt_pipelines.pegelonline import STATIONS_URL, arrow_table, rows_from  # noqa: E402
+from stardelt_pipelines.pegelonline import STATIONS_URL, arrow_table, kafka_record, rows_from  # noqa: E402
 
 NAMESPACE = "bronze"  # a schema inside the shared catalog
 TABLE = "pegelonline_measurements"
 CATALOG = "shared"  # the Lakekeeper warehouse, not the platform's `warehouse`
+TOPIC = "pegelonline.measurements"  # D42 §4/§7: the same rows the poller appends
 
 
 def _catalog():
@@ -81,6 +82,36 @@ def _ensure_table():
         return catalog.load_table((NAMESPACE, TABLE))
 
 
+def publish_rows(rows: list[dict], ingested_at: datetime) -> int:
+    """Publish every row to the bus when PEGELONLINE_KAFKA_BOOTSTRAP is set; 0 otherwise.
+
+    Unset means the bus is not installed: phase 1 keeps running exactly as before. The producer
+    is created per run and closed before the task returns, so no connection outlives the pod.
+    """
+    bootstrap = os.environ.get("PEGELONLINE_KAFKA_BOOTSTRAP", "").strip()
+    if not bootstrap:
+        return 0
+    from kafka import KafkaProducer  # imported here: the DAG module must load without the client
+
+    producer = KafkaProducer(
+        bootstrap_servers=bootstrap,
+        acks="all",
+        retries=5,
+        linger_ms=200,
+    )
+    try:
+        for row in rows:
+            producer.send(
+                TOPIC,
+                key=f"{row['station_uuid']}:{row['timeseries']}".encode(),
+                value=kafka_record(row, ingested_at),
+            )
+        producer.flush(timeout=60)
+    finally:
+        producer.close(timeout=10)
+    return len(rows)
+
+
 @dag(
     dag_id="pegelonline_hourly",
     schedule="7 * * * *",  # seven minutes past every hour
@@ -100,12 +131,18 @@ def pegelonline_hourly():
         rows = rows_from(r.json())
         if not rows:
             print("no measurements in the payload")
-            return {"rows": 0}
+            return {"rows": 0, "published": 0}
         ingested_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        # Publish before the append: a Kafka failure then fails the run with nothing written, so
+        # the retry cannot duplicate bronze rows. A duplicated message is the documented
+        # at-least-once posture for an append-only sink (design/streaming.md §4.5); a duplicated
+        # row in bronze is not. The same `ingested_at` goes into both paths, so the dashboard can
+        # compare them.
+        published = publish_rows(rows, ingested_at)
         table = _ensure_table()
         table.append(arrow_table(rows, ingested_at))
         print(f"appended {len(rows)} rows, newest measurement {max(row['measured_at'] for row in rows)}")
-        return {"rows": len(rows)}
+        return {"rows": len(rows), "published": published}
 
     ingest()
 

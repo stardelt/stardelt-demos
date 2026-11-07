@@ -1,6 +1,7 @@
 """PEGELONLINE (German federal waterway gauges) helpers — pure, stdlib only at import time."""
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 STATIONS_URL = (
@@ -147,3 +148,16 @@ def arrow_table(rows: list[dict], ingested_at: datetime):
         },
         schema=arrow_schema(),
     )
+
+
+def kafka_record(row: dict, ingested_at: datetime) -> bytes:
+    """One measurement as the JSON a `StreamApp` reads.
+
+    The table's fields, with both timestamps as ISO-8601 UTC strings (`…Z`). The key a producer
+    derives from it is `station_uuid:timeseries`, which is stable across runs — the sink merges
+    on it (D42 §4.5).
+    """
+    message = dict(row)
+    message["measured_at"] = row["measured_at"].isoformat() + "Z"
+    message["ingested_at"] = ingested_at.isoformat() + "Z"
+    return json.dumps(message, separators=(",", ":")).encode()

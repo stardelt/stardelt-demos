@@ -47,3 +47,5 @@ SELECT timeseries, count(*) FROM shared.silver.pegelonline_measurements GROUP BY
 SELECT * FROM shared.gold.pegelonline_station_latest WHERE timeseries = 'W' ORDER BY measurement_value DESC LIMIT 10;
 SELECT * FROM shared.gold.pegelonline_station_hourly WHERE timeseries = 'W' ORDER BY measured_hour DESC LIMIT 10;
 ```
+
+The DAG also publishes to `pegelonline.measurements` when `PEGELONLINE_KAFKA_BOOTSTRAP` is set (e.g. `kafka.stardelt.svc.cluster.local:9092`), one JSON message per (station, timeseries), key `station_uuid:timeseries`; unset, the DAG only appends to Iceberg.
