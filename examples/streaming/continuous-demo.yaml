@@ -1,0 +1,93 @@
+# A continuous PEGELONLINE-shaped stream: a producer pod writes every few seconds,
+# a StreamApp reads the topic and appends to Iceberg. This is the latency demo;
+# `dags/pegelonline_hourly.py` remains the hourly source connector for `demos#52`.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: pegelonline-continuous
+  namespace: stardelt
+  labels:
+    strimzi.io/cluster: kafka
+spec:
+  topicName: pegelonline.continuous
+  partitions: 1
+  replicas: 1
+  config:
+    retention.ms: "604800000"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pegelonline-continuous-producer
+  namespace: stardelt
+  labels:
+    app.kubernetes.io/part-of: stardelt
+    stardelt.io/demo: pegelonline-continuous
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pegelonline-continuous-producer
+  template:
+    metadata:
+      labels:
+        app: pegelonline-continuous-producer
+        stardelt.io/demo: pegelonline-continuous
+    spec:
+      containers:
+        - name: producer
+          # The Airflow image already carries kafka-python; the pod is a demo source,
+          # not part of the platform.
+          image: ghcr.io/stardelt/airflow@sha256:cc2e00a86233fc189031713d672221c61682edf1ddcab6a89f21ec99503becc0
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "/opt/producer/producer.py"]
+          env:
+            - name: KAFKA_BOOTSTRAP
+              value: kafka-kafka-bootstrap.stardelt.svc.cluster.local:9092
+            - name: TOPIC
+              value: pegelonline.continuous
+            - name: INTERVAL_SECONDS
+              value: "5"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: script
+              mountPath: /opt/producer
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: pegelonline-continuous-producer
+---
+apiVersion: stardelt.io/v1alpha1
+kind: StreamApp
+metadata:
+  name: pegelonline-continuous
+  namespace: stardelt
+  labels:
+    app.kubernetes.io/part-of: stardelt
+    stardelt.io/demo: pegelonline-continuous
+spec:
+  engine: spark
+  ownerGroup: mobility-analytics
+  restartPolicy: always
+  source:
+    topic: pegelonline.continuous
+    format: json
+  sink:
+    catalog: mobility
+    table: bronze.pegelonline_continuous
+    mode: merge
+    mergeKeys:
+      - station_uuid
+      - timeseries
+      - measured_at
