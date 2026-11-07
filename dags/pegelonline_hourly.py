@@ -26,7 +26,11 @@ def _catalog():
 
 
 def _ensure_table():
-    from pyiceberg.exceptions import NamespaceAlreadyExistsError, NoSuchTableError
+    from pyiceberg.exceptions import (
+        NamespaceAlreadyExistsError,
+        NoSuchTableError,
+        TableAlreadyExistsError,
+    )
     from pyiceberg.partitioning import PartitionField, PartitionSpec
     from pyiceberg.schema import Schema
     from pyiceberg.transforms import DayTransform
@@ -71,6 +75,10 @@ def _ensure_table():
             schema=schema,
             partition_spec=partition_spec,
         )
+    except TableAlreadyExistsError:
+        # Two runs can reach this point together (a manual and the scheduled one); the loser
+        # gets 409 and must read the table the winner created instead of failing (demos#48).
+        return catalog.load_table((NAMESPACE, TABLE))
 
 
 @dag(
