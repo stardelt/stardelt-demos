@@ -39,6 +39,7 @@ airflow-trigger:
 	kubectl -n $(NAMESPACE) exec deploy/airflow-scheduler -c scheduler -- airflow dags trigger nyc_taxi_load
 
 stream:
+	@echo "The sink table must exist first: run examples/pegelonline/sink.sql (see examples/pegelonline/README.md)."
 	kubectl -n $(NAMESPACE) apply -f examples/pegelonline/streamapp.yaml
 	kubectl -n $(NAMESPACE) get streamapp pegelonline -o jsonpath='{.status.phase}{"\n"}'
 	kubectl -n $(NAMESPACE) get sparkapplication pegelonline
