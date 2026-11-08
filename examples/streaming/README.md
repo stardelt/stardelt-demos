@@ -54,21 +54,21 @@ remains the evidence for `stardelt-demos#52`; this example is the low-latency co
 - Sink: **282 → 291 rows in 15 seconds**; `max(measured_at)` **13:41:12 → 13:41:27 UTC**.
 - Streams page as `mobility.analyst`: `pegelonline-continuous · Running`; retail sees
   `No streams yet`.
-- The hourly `pegelonline` stream was stopped for the demo because the single 8 vCPU node could
-  not schedule both executors (`Insufficient cpu`). Resume it with:
+- The hourly `pegelonline` stream was stopped for the 2026-11-07 demo because the old
+  full-core Spark requests did not fit; the half-core requests now let both streams share
+  the 8 vCPU node (both were `Running` on 2026-11-08). If you need the capacity back, stop
+  one stream — the checkpoint is kept:
 
   ```bash
-  kubectl -n stardelt patch streamapp pegelonline --type merge -p '{"spec":{"stopped":false}}'
+  kubectl -n stardelt patch streamapp pegelonline --type merge -p '{"spec":{"stopped":true}}'
   ```
 
-  after stopping the continuous one, or when the node has capacity.
+## `merge` and `append`
 
-## Why `merge`, not `append`
-
-`stream_job.py`'s `append` branch calls `.toTable(target)` and returns from `main` without
-`awaitTermination()`, so the driver exits and the streaming query stops. The `merge` branch waits
-on the query. Until the append path is fixed, use `merge` (or `mergeKeys` on a unique key set).
-The sink columns are `timestamp with time zone` so the ISO-8601 `Z` producer form parses directly.
+Both sink modes work. `merge` keeps a current-state table: rows are merged on `mergeKeys`,
+and when one micro-batch carries two rows for the same key the row with the newest Kafka
+offset wins. `append` adds every row and is at-least-once. The sink columns are
+`timestamp with time zone` so the ISO-8601 `Z` producer form parses directly.
 
 ## Self-service gap (for the architect)
 
