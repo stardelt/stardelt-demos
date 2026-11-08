@@ -49,3 +49,20 @@ SELECT * FROM shared.gold.pegelonline_station_hourly WHERE timeseries = 'W' ORDE
 ```
 
 The DAG also publishes to `pegelonline.measurements` when `PEGELONLINE_KAFKA_BOOTSTRAP` is set (e.g. `kafka.stardelt.svc.cluster.local:9092`), one JSON message per (station, timeseries), key `station_uuid:timeseries`; unset, the DAG only appends to Iceberg.
+
+## The stream (D42 phase 2b)
+
+`streamapp.yaml` runs the same rows through the bus: the DAG publishes to
+`pegelonline.measurements` and a `StreamApp` reads it into `mobility.bronze.pegelonline_stream`,
+merging on `(station_uuid, timeseries, measured_at)`.
+
+Create the sink table once, signed in as a member of the catalog's owner group
+(`mobility-analytics`): paste `sink.sql` into Nova's SQL editor, or run it with the `trino` CLI and
+a principal token. The job MERGEs into the table and does not create it.
+
+```bash
+make stream        # applies examples/pegelonline/streamapp.yaml
+```
+
+Expect `Running` from the `jsonpath` line and a `SparkApplication` named `pegelonline`. Follow it
+on Nova's Streams page; `spec.stopped: true` stops the job and keeps its checkpoint.
