@@ -15,6 +15,15 @@ pegelonline-continuous-producer (Deployment, 3 rows / 5 s)
 This is a demo workload, not part of the platform. The hourly DAG (`dags/pegelonline_hourly.py`)
 remains the evidence for `stardelt-demos#52`; this example is the low-latency counterpart.
 
+## Prerequisites
+
+The streaming pillar must be installed before the objects below mean anything:
+
+- **Dev install:** `make step-kafka && make step-spark-operator` — the first installs the Strimzi operator and the broker, the second the Kubeflow Spark Operator that runs a `StreamApp`. Without the second, `StreamApp/pegelonline-continuous` stays `Pending` and no driver pod appears.
+- **Operator path:** `spec.pillars.streaming: true` on a `PlatformInstance` installs both.
+
+The [Kafka page](https://stardelt.io/docs/services/kafka/) describes the two installs and the health checks; `make verify-streaming` proves them on a running install.
+
 ## Apply order
 
 1. **Create the sink table** with `sink.sql` in the Nova SQL editor as a member of
