@@ -33,6 +33,9 @@ DEFAULT_PRINCIPAL = "pipeline-runner"
 # A `Connection` name: 1 to 40 lower-case letters, digits and dashes, starting with a letter (the
 # operator's CRD pattern; the length limit is the API server's).
 _CONNECTION_NAME = re.compile(r"^[a-z]([a-z0-9-]*[a-z0-9])?$")
+# A connection's secret key becomes part of an environment variable (`CONN_<NAME>_<KEY>`), so it
+# must be a legal environment variable name after upper-casing.
+_CONNECTION_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # The `notebook` task's config rules, the same the operator's CEL rule and `validate_notebook_task`
 # enforce (a published object). The API server cannot see that `params` is JSON, so this module
 # repeats all of it.
@@ -281,6 +284,13 @@ def _connection_for_pipeline(
             f"connection `{name}` has no Kubernetes Secret yet: {detail}. "
             "A task pod mounts the synced Secret, so the run would wait for ever"
         )
+    for key in keys:
+        if not _CONNECTION_KEY.match(key):
+            raise PlanError(
+                f"connection `{name}` has the secret key `{key}`, which cannot become an "
+                "environment variable: use letters, digits and underscores, starting with a "
+                "letter or an underscore"
+            )
     return keys
 
 
