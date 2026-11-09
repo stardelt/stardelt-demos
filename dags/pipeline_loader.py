@@ -106,6 +106,7 @@ def _run_task(task: dict, params: dict, **context) -> None:
     dag_run = context["dag_run"]
     run_date = (context.get("logical_date") or dag_run.run_after).date().isoformat()
     sql = expand(task["sql"], run_date=run_date, run_id=dag_run.run_id, params=params)
+    tags = trino.lineage_tags(context["dag"].dag_id, context["task"].task_id, dag_run.run_id)
 
     ca_file = os.environ.get("PIPELINE_TRINO_CA_FILE")
     with httpx.Client(verify=ca_file or True, timeout=60.0) as http:
@@ -127,7 +128,9 @@ def _run_task(task: dict, params: dict, **context) -> None:
 
         # The executor SIGTERMs the task when the run is stopped; the handler cancels the
         # statement and the next poll turns it into a real `USER_CANCELED` error.
-        handler = trino.cancel_handler(http, token=token, current=current, source=TRINO_SOURCE)
+        handler = trino.cancel_handler(
+            http, token=token, current=current, source=TRINO_SOURCE, tags=tags
+        )
         with trino.cancel_on_termination(handler):
             outcome = trino.run_statement(
                 sql,
@@ -135,6 +138,7 @@ def _run_task(task: dict, params: dict, **context) -> None:
                 token=token,
                 client=http,
                 source=TRINO_SOURCE,
+                tags=tags,
                 on_started=_started,
             )
     log.info(

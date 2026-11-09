@@ -29,13 +29,26 @@ class Outcome:
     update_count: int | None
 
 
-def statement_headers(token: str, source: str = "stardelt-pipeline") -> dict[str, str]:
+def statement_headers(
+    token: str, source: str = "stardelt-pipeline", tags: tuple[str, ...] = ()
+) -> dict[str, str]:
     """The headers every statement call carries: the submit, the polls and both cancels."""
     return {
         "Authorization": f"Bearer {token}",
         "X-Trino-Source": source,
-        "X-Trino-Client-Tags": "stardelt-pipeline",
+        "X-Trino-Client-Tags": ",".join(["stardelt-pipeline", *tags]),
     }
+
+
+def lineage_tags(dag_id: str, task_id: str, run_id: str) -> tuple[str, ...]:
+    """`pipeline=<ns>/<name>`, `task=<id>`, `run=<id>`; commas removed (Trino splits tags on commas)."""
+    namespace, _, name = dag_id.partition("__")
+    pipeline = f"{namespace}/{name}" if name else namespace
+    return (
+        f"pipeline={pipeline.replace(',', '')}",
+        f"task={task_id.replace(',', '')}",
+        f"run={run_id.replace(',', '')}",
+    )
 
 
 def client_credentials_token(
@@ -61,6 +74,7 @@ def run_statement(
     token: str,
     client: httpx.Client,
     source: str = "stardelt-pipeline",
+    tags: tuple[str, ...] = (),
     deadline_s: float | None = None,
     poll_s: float = 0.2,
     clock: Callable[[], float] = time.monotonic,
@@ -72,7 +86,7 @@ def run_statement(
     `on_started` gets `(query_id, next_uri)` as soon as the engine has answered the submit and
     again whenever `next_uri` changes, so a caller can cancel the statement while it runs.
     """
-    headers = statement_headers(token, source)
+    headers = statement_headers(token, source, tags)
     started = clock()
     response = client.post(
         f"{base_url.rstrip('/')}/v1/statement",
@@ -115,6 +129,7 @@ def cancel_handler(
     token: str,
     current: dict[str, str | None],
     source: str = "stardelt-pipeline",
+    tags: tuple[str, ...] = (),
 ) -> Callable[[int, FrameType | None], None]:
     """Build the SIGTERM handler that cancels the statement `current` points at.
 
@@ -128,7 +143,7 @@ def cancel_handler(
         uri = current["next_uri"]
         if uri:
             try:
-                client.delete(uri, headers=statement_headers(token, source))
+                client.delete(uri, headers=statement_headers(token, source, tags))
             except Exception:  # noqa: BLE001 - the next poll reports the outcome
                 log.warning("could not cancel query %s", current["query_id"])
 
