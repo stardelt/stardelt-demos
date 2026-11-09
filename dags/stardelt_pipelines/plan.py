@@ -9,6 +9,9 @@ The same holds for the principal: a pipeline that names one is checked against t
 `ServicePrincipal` resources of its namespace (the caller passes them in), so no pipeline can
 run as another group's principal. A notebook task runs as that principal, so a pipeline that
 carries one must have an `ownerGroup` and a `runAs`.
+
+A kind without a runtime is refused at parse time; the API accepts it so manifests can be
+written ahead of its runtime.
 """
 from __future__ import annotations
 
@@ -127,6 +130,11 @@ def plan(resource: dict, namespace: str, principals: dict[str, dict] | None = No
             raise PlanError(f"task name `{task_name}` is used twice")
         seen.add(task_name)
         kind = raw.get("kind")
+        if kind not in ("sql", "notebook"):
+            raise PlanError(
+                f"task `{task_name}` has kind `{kind}`, which has no runtime yet "
+                "(only sql and notebook run today)"
+            )
         if kind == "sql" and not raw.get("sql"):
             raise PlanError(f"sql task `{task_name}` needs a sql statement")
         notebook = object_version = None

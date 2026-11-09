@@ -88,6 +88,14 @@ def test_a_resource_without_a_name_is_rejected():
         plan({"spec": {"tasks": [sql("a")]}}, "t")
 
 
+@pytest.mark.parametrize("kind", ["python", "dbt", "quality"])
+def test_a_kind_without_a_runtime_is_refused(kind):
+    # The API accepts these kinds ahead of their runtimes; the plan must refuse them so the
+    # loader skips the DAG at parse time instead of failing when the schedule fires.
+    with pytest.raises(PlanError, match="has no runtime yet"):
+        plan(resource(tasks=[{"name": "a", "kind": kind}]), "t")
+
+
 @pytest.mark.parametrize("text, seconds", [("30s", 30), ("5m", 300), ("2h", 7200), ("1d", 86400)])
 def test_durations(text, seconds):
     assert parse_duration(text, None) == seconds
