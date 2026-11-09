@@ -9,6 +9,7 @@ from stardelt_pipelines.trino import (
     cancel_handler,
     cancel_on_termination,
     client_credentials_token,
+    lineage_tags,
     run_statement,
     statement_headers,
 )
@@ -126,6 +127,41 @@ def test_statement_headers_are_shared_with_the_polls():
         assert headers["authorization"] == expected["Authorization"]
         assert headers["x-trino-source"] == expected["X-Trino-Source"]
         assert headers["x-trino-client-tags"] == expected["X-Trino-Client-Tags"]
+
+
+def test_lineage_tags_ride_on_the_submit_and_on_every_poll():
+    seen = []
+
+    def handler(request):
+        seen.append((request.method, request.url.path, request.headers["x-trino-client-tags"]))
+        if request.method == "POST":
+            return httpx.Response(200, json={"id": "q1", "nextUri": f"{BASE}/v1/statement/q1/1"})
+        if request.url.path.endswith("/1"):
+            return httpx.Response(200, json={"id": "q1", "data": [[1]], "nextUri": f"{BASE}/v1/statement/q1/2"})
+        return httpx.Response(200, json={"id": "q1", "data": [[2]], "updateCount": 2})
+
+    with client(handler) as http:
+        run_statement(
+            "SELECT 1",
+            base_url=BASE,
+            token="tok",
+            client=http,
+            tags=("pipeline=shop/orders", "task=load", "run=manual__1"),
+            sleep=lambda s: None,
+        )
+    assert [method for method, _, _ in seen] == ["POST", "GET", "GET"]
+    assert all(
+        tags == "stardelt-pipeline,pipeline=shop/orders,task=load,run=manual__1"
+        for _, _, tags in seen
+    )
+
+
+def test_lineage_tags_split_the_dag_id_on_the_first_double_underscore_and_drop_commas():
+    assert lineage_tags("shop__orders", "load", "a,b") == (
+        "pipeline=shop/orders",
+        "task=load",
+        "run=ab",
+    )
 
 
 def test_the_cancel_handler_deletes_the_current_next_uri():
