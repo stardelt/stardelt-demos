@@ -353,6 +353,16 @@ def test_a_notebook_task_receives_its_connections_keys():
     assert report.connection_keys == ("user", "password")
 
 
+def test_a_camel_case_key_is_allowed_it_is_upper_cased():
+    name, crm = connection(secret={"keys": ["clientId", "clientSecret"]})
+    p = plan(
+        *owned(notebook("report", connection=name)),
+        connections={name: crm},
+    )
+    (report,) = p.tasks
+    assert report.connection_keys == ("clientId", "clientSecret")
+
+
 def test_a_connection_without_secret_keys_needs_no_synced_secret():
     name, kafka = connection(name="bus", secret=None, status={"ready": False})
     p = plan(
@@ -406,6 +416,11 @@ def test_a_connection_without_secret_keys_needs_no_synced_secret():
                 ]
             ),
             "has no Kubernetes Secret yet",
+        ),
+        (
+            lambda: notebook("report", connection="crm-db"),
+            dict([connection(secret={"keys": ["user", "api-key"]})]),
+            "cannot become an environment variable",
         ),
     ],
 )
