@@ -55,6 +55,7 @@ API_GROUP = os.environ.get("PIPELINE_API_GROUP", "stardelt.io")
 API_PLURAL = os.environ.get("PIPELINE_API_PLURAL", "pipelines")
 API_VERSION = "v1alpha1"
 PRINCIPAL_PLURAL = "serviceprincipals"
+CONNECTION_PLURAL = "connections"
 NAMESPACE_FILE = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
 TRINO_SOURCE = "stardelt-pipeline"
 
@@ -64,8 +65,11 @@ def _namespace() -> str:
         return handle.read().strip()
 
 
-def _list_resources(namespace: str) -> tuple[list[dict], dict[str, dict]]:
-    """Every `Pipeline` of the namespace, plus its `ServicePrincipal` resources by name."""
+def _list_resources(
+    namespace: str,
+) -> tuple[list[dict], dict[str, dict], dict[str, dict]]:
+    """Every `Pipeline` of the namespace, plus its `ServicePrincipal` and `Connection` resources by
+    name."""
     from kubernetes import client, config
 
     config.load_incluster_config()
@@ -76,11 +80,22 @@ def _list_resources(namespace: str) -> tuple[list[dict], dict[str, dict]]:
     principals = api.list_namespaced_custom_object(
         API_GROUP, API_VERSION, namespace, PRINCIPAL_PLURAL
     ).get("items", [])
-    return pipelines, {
-        resource["metadata"]["name"]: resource
-        for resource in principals
-        if resource.get("metadata", {}).get("name")
-    }
+    connections = api.list_namespaced_custom_object(
+        API_GROUP, API_VERSION, namespace, CONNECTION_PLURAL
+    ).get("items", [])
+    return (
+        pipelines,
+        {
+            resource["metadata"]["name"]: resource
+            for resource in principals
+            if resource.get("metadata", {}).get("name")
+        },
+        {
+            resource["metadata"]["name"]: resource
+            for resource in connections
+            if resource.get("metadata", {}).get("name")
+        },
+    )
 
 
 def _run_task(task: dict, params: dict, **context) -> None:
@@ -170,6 +185,8 @@ def _build_dag(p) -> DAG:
                 task_params=dict(t.notebook_params),
                 pipeline_params=p.params,
                 principal_secret=p.principal.secret_name,
+                connection_name=t.connection,
+                connection_keys=t.connection_keys,
                 namespace=namespace,
                 dag=dag,
             )
@@ -191,11 +208,11 @@ def _build_dag(p) -> DAG:
 
 
 namespace = _namespace()
-pipelines, principals = _list_resources(namespace)
+pipelines, principals, connections = _list_resources(namespace)
 for resource in pipelines:
     name = resource.get("metadata", {}).get("name", "?")
     try:
-        pipeline_plan = plan(resource, namespace, principals)
+        pipeline_plan = plan(resource, namespace, principals, connections)
         globals()[pipeline_plan.dag_id] = _build_dag(pipeline_plan)
     except PlanError as problem:
         log.warning("pipeline %s/%s is not loaded: %s", namespace, name, problem)

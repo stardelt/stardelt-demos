@@ -222,3 +222,23 @@ def test_missing_image_env_fails_clearly(monkeypatch):
     monkeypatch.delenv("PIPELINE_NOTEBOOK_IMAGE", raising=False)
     with pytest.raises(ValueError, match="^PIPELINE_NOTEBOOK_IMAGE is not set$"):
         operator().execute(context())
+
+
+def test_the_pod_carries_the_connections_values(monkeypatch):
+    set_contract(monkeypatch)
+    env = pod_env(
+        run_date="2026-10-21",
+        run_id=RUN_ID,
+        params={},
+        principal_secret="sp-p",
+        connection_name="crm-db",
+        connection_keys=("user", "password"),
+    )
+    by_name = {item.name: item for item in env}
+    # The values are references to the synced Secret; the pod names them CONN_<NAME>_<KEY>.
+    for name, key in (("CONN_CRM_DB_USER", "user"), ("CONN_CRM_DB_PASSWORD", "password")):
+        assert by_name[name].value is None
+        assert by_name[name].value_from.secret_key_ref.name == "conn-crm-db"
+        assert by_name[name].value_from.secret_key_ref.key == key
+    # A connection adds to the environment the pod already had; it replaces nothing.
+    assert by_name["PIPELINE_CLIENT_ID"].value_from.secret_key_ref.name == "sp-p"
