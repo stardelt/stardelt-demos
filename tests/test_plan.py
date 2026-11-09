@@ -332,13 +332,14 @@ def test_refuses_notebook_without_owner_group():
 
 def connection(**spec):
     """A `Connection` resource as the API server returns it."""
+    status = spec.pop("status", {"ready": True})
     spec.setdefault("scope", "group")
     spec.setdefault("ownerGroup", "analytics")
     spec.setdefault("type", "postgresql")
     spec.setdefault("config", {"host": "db"})
     spec.setdefault("secret", {"keys": ["user", "password"]})
     name = spec.pop("name", "crm-db")
-    return name, {"metadata": {"name": name}, "spec": spec}
+    return name, {"metadata": {"name": name}, "spec": spec, "status": status}
 
 
 def test_a_notebook_task_receives_its_connections_keys():
@@ -350,6 +351,16 @@ def test_a_notebook_task_receives_its_connections_keys():
     (report,) = p.tasks
     assert report.connection == "crm-db"
     assert report.connection_keys == ("user", "password")
+
+
+def test_a_connection_without_secret_keys_needs_no_synced_secret():
+    name, kafka = connection(name="bus", secret=None, status={"ready": False})
+    p = plan(
+        *owned(notebook("report", connection=name)),
+        connections={name: kafka},
+    )
+    (report,) = p.tasks
+    assert report.connection_keys == ()
 
 
 @pytest.mark.parametrize(
@@ -375,6 +386,26 @@ def test_a_notebook_task_receives_its_connections_keys():
             lambda: dict(sql("load"), connection="crm-db"),
             dict([connection()]),
             "cannot name a connection",
+        ),
+        (
+            lambda: notebook("report", connection="crm-db"),
+            dict(
+                [
+                    connection(
+                        status={
+                            "ready": False,
+                            "conditions": [
+                                {
+                                    "type": "Ready",
+                                    "reason": "ExternalSecretsNotInstalled",
+                                    "message": "External Secrets Operator is not installed",
+                                }
+                            ],
+                        }
+                    )
+                ]
+            ),
+            "has no Kubernetes Secret yet",
         ),
     ],
 )
