@@ -98,6 +98,8 @@ def pod_env(
     run_id: str,
     params: Mapping[str, str],
     principal_secret: str,
+    connection_name: str | None = None,
+    connection_keys: tuple[str, ...] = (),
 ) -> list[k8s.V1EnvVar]:
     """The environment of the notebook pod: the wrapper's contract, and no storage credential.
 
@@ -107,6 +109,9 @@ def pod_env(
     loader's own environment. When the loader's environment sets `PIPELINE_NOTEBOOK_KERNEL_TIMEOUT`
     (seconds), the pod gets it as `NOTEBOOK_KERNEL_TIMEOUT`, how long papermill waits for the kernel
     on a busy node (the wrapper checks the range and defaults to 180); unset, the pod gets nothing.
+
+    A named `Connection`'s values arrive as `CONN_<NAME>_<KEY>` `secretKeyRef`s to Secret
+    `conn-<name>`; nothing passes through Python.
     """
     env = [
         k8s.V1EnvVar(name="NOTEBOOK_PARAMS", value=json.dumps(dict(params), sort_keys=True)),
@@ -119,6 +124,11 @@ def pod_env(
         _secret_env("PIPELINE_CLIENT_SECRET", principal_secret, "client-secret"),
         k8s.V1EnvVar(name="STARDELT_QUERY_IDS", value=QUERY_IDS_FILE),
     ]
+    if connection_name is not None:
+        # `crm-db` -> `CONN_CRM_DB_<KEY>`: the platform's promise for a connection's secret keys.
+        prefix = f"CONN_{connection_name.upper().replace('-', '_')}_"
+        for key in connection_keys:
+            env.append(_secret_env(f"{prefix}{key.upper()}", f"conn-{connection_name}", key))
     kernel_timeout = (os.environ.get(KERNEL_TIMEOUT_ENV) or "").strip()
     if kernel_timeout:
         env.append(k8s.V1EnvVar(name="NOTEBOOK_KERNEL_TIMEOUT", value=kernel_timeout))
@@ -194,6 +204,8 @@ class NotebookPodOperator(KubernetesPodOperator):
         pipeline_params: Mapping[str, str],
         principal_secret: str,
         namespace: str,
+        connection_name: str | None = None,
+        connection_keys: tuple[str, ...] = (),
         **kwargs,
     ) -> None:
         self.pipeline = pipeline
@@ -203,6 +215,8 @@ class NotebookPodOperator(KubernetesPodOperator):
         self.task_params = dict(task_params)
         self.pipeline_params = dict(pipeline_params)
         self.principal_secret = principal_secret
+        self.connection_name = connection_name
+        self.connection_keys = tuple(connection_keys)
         super().__init__(
             namespace=namespace,
             image=None,  # set in execute from PIPELINE_NOTEBOOK_IMAGE
@@ -286,6 +300,8 @@ class NotebookPodOperator(KubernetesPodOperator):
             run_id=run_id,
             params=merged_params(self.pipeline_params, self.task_params),
             principal_secret=self.principal_secret,
+            connection_name=self.connection_name,
+            connection_keys=self.connection_keys,
         )
         self.env_vars += [
             k8s.V1EnvVar(name="NOTEBOOK_GET_URL", value=get_url),

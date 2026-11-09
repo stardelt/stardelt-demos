@@ -12,6 +12,9 @@ carries one must have an `ownerGroup` and a `runAs`.
 
 A kind without a runtime is refused at parse time; the API accepts it so manifests can be
 written ahead of its runtime.
+
+A task that names a `connection` is checked against the namespace's `Connection` resources
+(scope and owner group); its keys become `CONN_<NAME>_<KEY>` in the task pod.
 """
 from __future__ import annotations
 
@@ -27,6 +30,9 @@ DEFAULT_RETRY_DELAY_S = 60
 # The platform's shared pipeline principal (phase J0). It belongs to no group, so it is never the
 # principal a pipeline with an `ownerGroup` may name.
 DEFAULT_PRINCIPAL = "pipeline-runner"
+# A `Connection` name: 1 to 40 lower-case letters, digits and dashes, starting with a letter (the
+# operator's CRD pattern; the length limit is the API server's).
+_CONNECTION_NAME = re.compile(r"^[a-z]([a-z0-9-]*[a-z0-9])?$")
 # The `notebook` task's config rules, the same the operator's CEL rule and `validate_notebook_task`
 # enforce (a published object). The API server cannot see that `params` is JSON, so this module
 # repeats all of it.
@@ -73,6 +79,9 @@ class TaskPlan:
     notebook: str | None = None
     object_version: str | None = None
     notebook_params: tuple[tuple[str, str], ...] = ()
+    # The `Connection` a task names and the secret keys its pod gets as `CONN_<NAME>_<KEY>`.
+    connection: str | None = None
+    connection_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -106,11 +115,17 @@ def dag_id(namespace: str, name: str) -> str:
     return f"{namespace}__{name}"
 
 
-def plan(resource: dict, namespace: str, principals: dict[str, dict] | None = None) -> PipelinePlan:
+def plan(
+    resource: dict,
+    namespace: str,
+    principals: dict[str, dict] | None = None,
+    connections: dict[str, dict] | None = None,
+) -> PipelinePlan:
     """Validate `resource` and return its plan, or raise `PlanError`.
 
     `principals` are the `ServicePrincipal` resources of the namespace by name; `None` means the
-    namespace has none, so a pipeline that names one is refused.
+    namespace has none, so a pipeline that names one is refused. `connections` are its
+    `Connection` resources by name, the same way.
     """
     name = resource.get("metadata", {}).get("name")
     if not name:
@@ -143,6 +158,26 @@ def plan(resource: dict, namespace: str, principals: dict[str, dict] | None = No
             if not (spec.get("ownerGroup") and spec.get("runAs")):
                 raise PlanError(NOTEBOOK_NEEDS_PRINCIPAL)
             notebook, object_version, notebook_params = _notebook_config(raw.get("config"))
+        connection = raw.get("connection")
+        connection_keys: tuple[str, ...] = ()
+        if connection is not None:
+            if not isinstance(connection, str) or not _CONNECTION_NAME.match(connection):
+                raise PlanError(
+                    f"task `{task_name}` names a connection that is not a connection name "
+                    "(1 to 40 lower-case letters, digits and dashes, starting with a letter)"
+                )
+            if kind == "sql":
+                raise PlanError(
+                    f"sql task `{task_name}` cannot name a connection: it runs inside the engine. "
+                    "A connection is used by a notebook task."
+                )
+            found = (connections or {}).get(connection)
+            if found is None:
+                raise PlanError(
+                    f"task `{task_name}` names connection `{connection}`, which does not exist in "
+                    f"namespace `{namespace}`"
+                )
+            connection_keys = _connection_for_pipeline(connection, found, spec.get("ownerGroup"))
         tasks.append(
             TaskPlan(
                 name=task_name,
@@ -153,6 +188,8 @@ def plan(resource: dict, namespace: str, principals: dict[str, dict] | None = No
                 notebook=notebook,
                 object_version=object_version,
                 notebook_params=notebook_params,
+                connection=connection,
+                connection_keys=connection_keys,
             )
         )
     for task in tasks:
@@ -201,6 +238,35 @@ def _notebook_config(config: dict | None) -> tuple[str, str, tuple[tuple[str, st
     if not isinstance(version, str) or not _OBJECT_VERSION.match(version):
         raise PlanError(NOTEBOOK_NEEDS_FILE)
     return notebook, version, _notebook_params(config.get("params"))
+
+
+def _connection_for_pipeline(
+    name: str, connection: dict, owner_group: str | None
+) -> tuple[str, ...]:
+    """The secret keys a pipeline may hand to its task pod, or a `PlanError`.
+
+    `group` connections belong to one group and the pipeline must run as that group's principal;
+    `managed` connections are for platform-run work and name the groups in `usableBy`; `personal`
+    connections belong to a person and are never handed to a pipeline. The Kubernetes Secret is
+    `conn-<name>`; a connection with no `secret` block has no keys and needs no pod variable.
+    """
+    spec = connection.get("spec") or {}
+    scope = spec.get("scope") or "personal"
+    if scope == "personal":
+        raise PlanError(
+            f"connection `{name}` is personal; a pipeline runs as a service principal and may use "
+            "a group or managed connection"
+        )
+    if scope == "group" and spec.get("ownerGroup") != owner_group:
+        raise PlanError(
+            f"connection `{name}` belongs to group `{spec.get('ownerGroup')}`, not to this "
+            "pipeline's ownerGroup"
+        )
+    if scope == "managed" and owner_group not in (spec.get("usableBy") or []):
+        raise PlanError(
+            f"connection `{name}` is managed and does not list group `{owner_group}` in usableBy"
+        )
+    return tuple((spec.get("secret") or {}).get("keys") or ())
 
 
 def _notebook_params(raw: str | None) -> tuple[tuple[str, str], ...]:

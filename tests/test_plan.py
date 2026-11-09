@@ -325,3 +325,59 @@ def test_refuses_notebook_without_owner_group():
     assert str(error.value) == (
         "a notebook task runs as the group principal of its pipeline: set ownerGroup and runAs"
     )
+
+
+# --- the connection: a notebook task's credentials for an outside system ------------------------
+
+
+def connection(**spec):
+    """A `Connection` resource as the API server returns it."""
+    spec.setdefault("scope", "group")
+    spec.setdefault("ownerGroup", "analytics")
+    spec.setdefault("type", "postgresql")
+    spec.setdefault("config", {"host": "db"})
+    spec.setdefault("secret", {"keys": ["user", "password"]})
+    name = spec.pop("name", "crm-db")
+    return name, {"metadata": {"name": name}, "spec": spec}
+
+
+def test_a_notebook_task_receives_its_connections_keys():
+    name, crm = connection()
+    p = plan(
+        *owned(notebook("report", connection=name)),
+        connections={name: crm},
+    )
+    (report,) = p.tasks
+    assert report.connection == "crm-db"
+    assert report.connection_keys == ("user", "password")
+
+
+@pytest.mark.parametrize(
+    "task, connections, message",
+    [
+        (lambda: notebook("report", connection="ghost"), {}, "does not exist"),
+        (
+            lambda: notebook("report", connection="personal-db"),
+            dict([connection(name="personal-db", scope="personal")]),
+            "is personal",
+        ),
+        (
+            lambda: notebook("report", connection="sales-db"),
+            dict([connection(name="sales-db", scope="group", ownerGroup="sales")]),
+            "belongs to group",
+        ),
+        (
+            lambda: notebook("report", connection="shared-db"),
+            dict([connection(name="shared-db", scope="managed", usableBy=["sales"])]),
+            "does not list group",
+        ),
+        (
+            lambda: dict(sql("load"), connection="crm-db"),
+            dict([connection()]),
+            "cannot name a connection",
+        ),
+    ],
+)
+def test_a_connection_must_exist_and_belong_to_the_pipelines_group(task, connections, message):
+    with pytest.raises(PlanError, match=message):
+        plan(*owned(task()), connections=connections)
