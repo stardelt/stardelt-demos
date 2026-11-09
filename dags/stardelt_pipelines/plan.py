@@ -249,6 +249,10 @@ def _connection_for_pipeline(
     `managed` connections are for platform-run work and name the groups in `usableBy`; `personal`
     connections belong to a person and are never handed to a pipeline. The Kubernetes Secret is
     `conn-<name>`; a connection with no `secret` block has no keys and needs no pod variable.
+
+    A connection whose `status.ready` is not true has no Secret to mount; it is refused with the
+    Ready condition's sentence, not with a pod that never starts. A connection with no `secret`
+    block needs no Secret and is accepted.
     """
     spec = connection.get("spec") or {}
     scope = spec.get("scope") or "personal"
@@ -266,7 +270,18 @@ def _connection_for_pipeline(
         raise PlanError(
             f"connection `{name}` is managed and does not list group `{owner_group}` in usableBy"
         )
-    return tuple((spec.get("secret") or {}).get("keys") or ())
+    keys = tuple((spec.get("secret") or {}).get("keys") or ())
+    status = connection.get("status") or {}
+    if keys and status.get("ready") is not True:
+        ready = next(
+            (c for c in status.get("conditions") or [] if c.get("type") == "Ready"), {}
+        )
+        detail = ready.get("message") or ready.get("reason") or "the sync has not reported yet"
+        raise PlanError(
+            f"connection `{name}` has no Kubernetes Secret yet: {detail}. "
+            "A task pod mounts the synced Secret, so the run would wait for ever"
+        )
+    return keys
 
 
 def _notebook_params(raw: str | None) -> tuple[tuple[str, str], ...]:
