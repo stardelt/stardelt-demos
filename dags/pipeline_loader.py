@@ -106,7 +106,7 @@ def _run_task(task: dict, params: dict, **context) -> None:
     dag_run = context["dag_run"]
     run_date = (context.get("logical_date") or dag_run.run_after).date().isoformat()
     sql = expand(task["sql"], run_date=run_date, run_id=dag_run.run_id, params=params)
-    tags = trino.lineage_tags(context["dag"].dag_id, context["task"].task_id, dag_run.run_id)
+    tags = trino.lineage_tags(context["dag"].dag_id, context["ti"].task_id, dag_run.run_id)
 
     ca_file = os.environ.get("PIPELINE_TRINO_CA_FILE")
     with httpx.Client(verify=ca_file or True, timeout=60.0) as http:
