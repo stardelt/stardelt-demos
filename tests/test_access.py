@@ -17,12 +17,12 @@ def test_the_role_of_a_group_is_the_one_the_platform_creates():
     assert group_role("mobility-analytics") == "stardelt-group-mobility-analytics"
 
 
-def test_an_owner_group_gets_read_and_edit_on_the_dag_and_read_and_create_on_its_runs():
+def test_an_owner_group_gets_read_on_the_dag_and_on_its_runs():
     access = dag_access("mobility-analytics")
     assert access["access_control"] == {
         "stardelt-group-mobility-analytics": {
-            "DAGs": {"can_read", "can_edit"},
-            "DAG Runs": {"can_read", "can_create"},
+            "DAGs": {"can_read"},
+            "DAG Runs": {"can_read"},
         }
     }
     assert access["owner"] == "mobility-analytics"
@@ -33,6 +33,9 @@ def test_a_group_never_gets_delete_or_a_global_permission():
     granted = {action for actions in GROUP_PERMISSIONS.values() for action in actions}
     assert "can_delete" not in granted
     assert set(GROUP_PERMISSIONS) == {"DAGs", "DAG Runs"}
+    for resource in ("DAGs", "DAG Runs"):
+        assert "can_edit" not in GROUP_PERMISSIONS[resource]
+        assert "can_create" not in GROUP_PERMISSIONS[resource]
 
 
 def test_a_pipeline_without_an_owner_group_names_no_role():
