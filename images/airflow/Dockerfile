@@ -1,4 +1,4 @@
-ARG AIRFLOW_VERSION=3.2.0
+ARG AIRFLOW_VERSION=3.2.2
 FROM apache/airflow:slim-${AIRFLOW_VERSION}-python3.12
 
 # Non-root, as upstream ships it (UID 50000); the numeric id is not needed here
