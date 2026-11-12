@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from types import FrameType
 from typing import Callable, Iterator
 
+import certifi
 import httpx
 
 log = logging.getLogger(__name__)
@@ -65,6 +66,17 @@ def client_credentials_token(
     )
     response.raise_for_status()
     return response.json()["access_token"]
+
+
+def identity_client(*, timeout: float = 60.0) -> httpx.Client:
+    """The client for the identity provider: the public bundle, never the engine's CA.
+
+    ``REQUESTS_CA_BUNDLE`` / ``SSL_CERT_FILE`` in a task pod name the warehouse's internal
+    CA (stardelt-platform#1094); the identity endpoint is a public HTTPS URL, so the token
+    POST must not use that bundle. Passing certifi's path explicitly overrides the
+    environment for this client only; the engine client keeps PIPELINE_TRINO_CA_FILE.
+    """
+    return httpx.Client(verify=certifi.where(), timeout=timeout)
 
 
 def run_statement(

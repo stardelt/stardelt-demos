@@ -2,8 +2,10 @@ import logging
 import os
 import signal
 
+import certifi
 import httpx
 import pytest
+from stardelt_pipelines import trino as trino_module
 from stardelt_pipelines.trino import (
     TrinoError,
     cancel_handler,
@@ -31,6 +33,20 @@ def test_token_comes_from_the_client_credentials_grant():
     with client(handler) as http:
         assert client_credentials_token("https://id.test/token", "pipeline-runner", "s3cret", client=http) == "tok"
     assert "grant_type=client_credentials" in seen["body"] and "client_id=pipeline-runner" in seen["body"]
+
+
+def test_identity_client_uses_the_public_bundle(monkeypatch):
+    """The token POST must not inherit the engine's CA (stardelt-platform#1094)."""
+    seen = {}
+
+    class Recorder:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+    monkeypatch.setattr(trino_module.httpx, "Client", Recorder)
+    trino_module.identity_client(timeout=5)
+    assert seen["verify"] == certifi.where()
+    assert seen["timeout"] == 5
 
 
 def test_a_statement_is_followed_to_the_end_and_counts_rows():
