@@ -15,7 +15,7 @@ engine error instead of leaving the query running behind it.
 
 Environment of the dag-processor and the task pods:
   PIPELINE_TRINO_URL        base URL of the query engine, e.g. https://trino:8443
-  PIPELINE_TRINO_CA_FILE    CA bundle that signed the engine's certificate (optional)
+  PIPELINE_TRINO_CA_FILE    CA bundle that signed the engine's certificate (optional; the token POST uses the public trust store)
   PIPELINE_TOKEN_URL        token endpoint of the identity provider
   PIPELINE_CLIENT_ID        the default principal, `pipeline-runner` (a pipeline with a group
                             principal overrides it in its own task pods)
@@ -109,12 +109,14 @@ def _run_task(task: dict, params: dict, **context) -> None:
     tags = trino.lineage_tags(context["dag"].dag_id, context["ti"].task_id, dag_run.run_id)
 
     ca_file = os.environ.get("PIPELINE_TRINO_CA_FILE")
-    with httpx.Client(verify=ca_file or True, timeout=60.0) as http:
+    with trino.identity_client() as identity, httpx.Client(
+        verify=ca_file or True, timeout=60.0
+    ) as http:
         token = trino.client_credentials_token(
             os.environ["PIPELINE_TOKEN_URL"],
             os.environ.get("PIPELINE_CLIENT_ID", DEFAULT_PRINCIPAL),
             os.environ["PIPELINE_CLIENT_SECRET"],
-            client=http,
+            client=identity,
         )
         # What a stop needs: the id as soon as the engine has it, and the URI to DELETE. Without
         # the cancel the statement outlives the task (and can still commit a write).
