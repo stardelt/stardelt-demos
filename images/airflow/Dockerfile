@@ -32,6 +32,12 @@ USER airflow
 # linux); bump them deliberately. The Airflow providers stay unpinned, as they
 # track AIRFLOW_VERSION, and a provider that needs a different Airflow fails
 # this build (which is the point).
+#
+# `statsd` is the client Airflow's `airflow.stats` imports. The chart already
+# configures it (`[metrics] statsd_on`, host `airflow-statsd`, port 9125, prefix
+# `airflow`), so without this package the exporter's scrape answers but stays
+# empty: no data, not an error. Do not install `apache-airflow[statsd]`
+# instead — an extra re-resolves Airflow (see above).
 # hadolint ignore=DL3013
 RUN "$VIRTUAL_ENV/bin/python" -m pip install --no-cache-dir \
         "apache-airflow==${AIRFLOW_VERSION}" \
@@ -44,11 +50,12 @@ RUN "$VIRTUAL_ENV/bin/python" -m pip install --no-cache-dir \
         "pyarrow==26.0.0" \
         "httpx==0.28.1" \
         "kafka-python==3.0.13" \
+        "statsd==4.0.1" \
  # A silently wrong image is worse than a red build: fail if the install moved
  # Airflow off the base image's version (see above) or if the DAG's imports are
  # missing. `pip check` catches a half-resolved environment.
  && "$VIRTUAL_ENV/bin/python" -c 'import sys, importlib.metadata as md; v = md.version("apache-airflow"); print("airflow", v); sys.exit(f"airflow {v} != the base image version {sys.argv[1]}") if v != sys.argv[1] else None' "${AIRFLOW_VERSION}" \
- && "$VIRTUAL_ENV/bin/python" -c 'import importlib.metadata as md, authlib, pyiceberg, pyiceberg_core, pyarrow, pyarrow.parquet, httpx, kafka, psycopg2, airflow.providers.amazon.aws.hooks.s3; print("DAG imports ok: pyiceberg", md.version("pyiceberg"), "pyiceberg-core", md.version("pyiceberg-core"), "pyarrow", md.version("pyarrow"), "httpx", md.version("httpx"), "kafka", md.version("kafka-python"))' \
+ && "$VIRTUAL_ENV/bin/python" -c 'import importlib.metadata as md, authlib, pyiceberg, pyiceberg_core, pyarrow, pyarrow.parquet, httpx, kafka, statsd, psycopg2, airflow.providers.amazon.aws.hooks.s3; print("DAG imports ok: pyiceberg", md.version("pyiceberg"), "pyiceberg-core", md.version("pyiceberg-core"), "pyarrow", md.version("pyarrow"), "httpx", md.version("httpx"), "kafka", md.version("kafka-python"), "statsd", md.version("statsd"))' \
  && "$VIRTUAL_ENV/bin/python" -m pip check
 
 COPY --chown=airflow:0 dags/ /opt/airflow/dags/
