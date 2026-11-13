@@ -16,7 +16,7 @@ DBT = EXAMPLES / "shop"
 
 # The limits of a pipeline statement (Nova: one statement, at most 20 000 characters) and of a development name.
 MAX_STATEMENT = 20_000
-MAX_NAME = 17  # "dev-" + a sign-in name of up to 18 characters + "-" + the name stays within 40 characters
+MAX_NAME = 13  # "dev-" + a sign-in name of up to 22 characters + "-" + "shop-1-bronze" stays within 40 characters
 
 PARAM = re.compile(r"\$\{params\.([a-z][a-z0-9_]*)\}")
 VAR = re.compile(r"\$\{var\.([A-Za-z0-9_]+)\}")
@@ -33,41 +33,76 @@ def manifest():
     return yaml.safe_load((BUNDLE / "bundle.yaml").read_text(encoding="utf-8"))
 
 
-def test_every_pipeline_names_a_statement_file_that_exists():
+# The statement file of every task, by the pipeline it belongs to (the numbers are the old file order).
+TASK_FILES = {
+    "shop-1-bronze": {"schema": "01_schema_bronze", "customers": "04_customers",
+                      "products": "05_products", "order_lines": "06_order_lines"},
+    "shop-2-silver": {"schema": "02_schema_silver", "stg_customers": "07_stg_customers",
+                      "stg_products": "08_stg_products", "stg_order_lines": "09_stg_order_lines"},
+    "shop-3-gold": {"schema": "03_schema_gold", "daily_revenue": "10_daily_revenue",
+                    "customer_ltv": "11_customer_ltv", "product_mix": "12_product_mix"},
+}
+
+
+def tasks():
+    return [(path, doc, task) for path, doc in pipelines() for task in doc["tasks"]]
+
+
+def test_three_pipelines_one_per_layer():
     found = pipelines()
-    assert len(found) == 12
+    assert [doc["name"] for _, doc in found] == ["shop-1-bronze", "shop-2-silver", "shop-3-gold"]
     for path, doc in found:
-        statement = BUNDLE / doc["sqlFile"]
-        assert statement.is_file(), f"{path.name}: {doc['sqlFile']} is missing"
-        assert statement.stem == path.stem, f"{path.name} and {statement.name} do not belong together"
+        assert "tasks" in doc, path.name
+        for key in ("sql", "sqlFile", "notebook"):
+            assert key not in doc, f"{path.name}: `tasks` cannot be combined with {key}"
+        assert len(doc["tasks"]) == 4, path.name
+        assert len(doc["name"]) <= MAX_NAME, f"{doc['name']} is {len(doc['name'])} characters"
+
+
+def test_every_task_names_a_statement_file_that_exists():
+    found = pipelines()
+    names = {doc["name"]: [task["name"] for task in doc["tasks"]] for _, doc in found}
+    for _, doc, task in tasks():
+        expected = f"sql/{TASK_FILES[doc['name']][task['name']]}.sql"
+        assert task["sqlFile"] == expected, task
+        assert (BUNDLE / task["sqlFile"]).is_file(), task["sqlFile"]
     on_disk = sorted(p.name for p in (BUNDLE / "sql").glob("*.sql"))
-    assert on_disk == sorted(f"{path.stem}.sql" for path, _ in found), "a statement file belongs to no pipeline"
+    referenced = sorted(pathlib.Path(task["sqlFile"]).name for _, _, task in tasks())
+    assert referenced == on_disk, "every statement file belongs to exactly one task"
+    assert sorted(names) == sorted(TASK_FILES)
 
 
-def test_names_are_short_unique_and_run_in_file_order():
-    names = [doc["name"] for _, doc in pipelines()]
-    assert len(set(names)) == len(names)
-    for (path, _), name in zip(pipelines(), names):
-        assert re.fullmatch(r"shop-\d\d-[a-z-]+", name), name
-        assert len(name) <= MAX_NAME, f"{name} is {len(name)} characters"
-        assert name.split("-")[1] == path.stem.split("_")[0], f"{name} does not carry the number of {path.name}"
-    assert names == sorted(names), "bundle run starts the pipelines in name order: the order of the files must be the same"
+def test_dependencies_name_a_task_of_the_same_pipeline():
+    for _, doc, task in tasks():
+        rest = {other["name"] for other in doc["tasks"]} - {task["name"]}
+        depends = task.get("dependsOn", [])
+        assert len(depends) <= 8 and len(set(depends)) == len(depends), task
+        assert set(depends) <= rest, f"{doc['name']}/{task['name']}: {set(depends) - rest}"
+        if task["name"] == "schema":
+            assert depends == [], "schema must run first"
+        else:
+            assert depends == ["schema"], f"{doc['name']}/{task['name']}"
 
 
 def test_a_statement_uses_only_the_params_its_pipeline_sets():
     for _, doc in pipelines():
-        sql = (BUNDLE / doc["sqlFile"]).read_text(encoding="utf-8")
-        used = set(PARAM.findall(sql))
-        assert used <= set(doc.get("params", {})), f"{doc['name']} uses {used - set(doc.get('params', {}))} without setting it"
-        assert set(doc.get("params", {})) <= used, f"{doc['name']} sets a param its statement never uses"
+        used = set()
+        for task in doc["tasks"]:
+            sql = (BUNDLE / task["sqlFile"]).read_text(encoding="utf-8")
+            task_used = set(PARAM.findall(sql))
+            assert task_used <= set(doc.get("params", {})), (
+                f"{doc['name']}/{task['name']} uses {task_used - set(doc.get('params', {}))} without setting it"
+            )
+            used |= task_used
+        assert set(doc.get("params", {})) <= used, f"{doc['name']} sets a param no task uses"
 
 
 def test_a_statement_is_one_statement_within_the_limit():
-    for _, doc in pipelines():
-        sql = (BUNDLE / doc["sqlFile"]).read_text(encoding="utf-8")
+    for _, doc, task in tasks():
+        sql = (BUNDLE / task["sqlFile"]).read_text(encoding="utf-8")
         code = "\n".join(line for line in sql.splitlines() if not line.strip().startswith("--")).strip().rstrip(";")
-        assert ";" not in code, f"{doc['name']} holds more than one statement"
-        assert 0 < len(sql) <= MAX_STATEMENT, f"{doc['name']}: {len(sql)} characters"
+        assert ";" not in code, f"{doc['name']}/{task['name']} holds more than one statement"
+        assert 0 < len(sql) <= MAX_STATEMENT, f"{doc['name']}/{task['name']}: {len(sql)} characters"
         assert "\0" not in sql
 
 

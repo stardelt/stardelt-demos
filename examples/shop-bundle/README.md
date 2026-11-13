@@ -6,11 +6,11 @@ the cluster: only the `stardelt` command line, signed in.
 
 | Layer | Catalog | Pipeline (tasks) | What |
 |---|---|---|---|
-| bronze | `bronze` | `shop-bronze` (`schema`, `customers`, `products`, `order_lines`) | the two small seed tables and the generated order lines |
-| silver | `silver` | `shop-silver` (`schema`, `stg_customers`, `stg_products`, `stg_order_lines`) | three views with clean names and types |
-| gold | `gold` | `shop-gold` (`schema`, `daily_revenue`, `customer_ltv`, `product_mix`) | `daily_revenue`, `customer_ltv` (window functions), `product_mix` |
+| bronze | `bronze` | `shop-1-bronze` (`schema`, `customers`, `products`, `order_lines`) | the two small seed tables and the generated order lines |
+| silver | `silver` | `shop-2-silver` (`schema`, `stg_customers`, `stg_products`, `stg_order_lines`) | three views with clean names and types |
+| gold | `gold` | `shop-3-gold` (`schema`, `daily_revenue`, `customer_ltv`, `product_mix`) | `daily_revenue`, `customer_ltv` (window functions), `product_mix` |
 
-The three pipelines run in name order, and the `schema` task runs before the tasks that depend on it. Nothing is downloaded and
+The three pipelines run in pipeline-name order (that is what the numbers encode), and the `schema` task runs before the tasks that depend on it. Nothing is downloaded and
 nothing large is stored in Git: the order lines are built inside the query engine from the line number (`scale` of them, a
 multiple of 1000, default 200 000).
 
@@ -27,7 +27,7 @@ multiple of 1000, default 200 000).
 cd examples/shop-bundle
 stardelt bundle validate .            # offline: three pipelines for each of the two targets
 stardelt bundle plan . -t dev         # three lines "would-create"
-stardelt bundle deploy . -t dev       # three pipelines, named dev-<your name>-shop-bronze, ...
+stardelt bundle deploy . -t dev       # three pipelines, named dev-<your name>-shop-1-bronze, ...
 stardelt bundle run . -t dev          # starts them one after the other, waits for each, stops at the first that fails
 stardelt bundle summary . -t dev      # what runs on the stage, from which commit
 ```
@@ -48,20 +48,20 @@ Change something (for example the `scale` variable in `bundle.yaml`), then:
 ```bash
 stardelt bundle plan . -t dev --diff  # shows what would change in each pipeline
 stardelt bundle deploy . -t dev
-stardelt bundle run . -t dev --only shop-bronze
+stardelt bundle run . -t dev --only shop-1-bronze
 ```
 
-`--only` takes the name with or without the `dev-<your name>-` prefix. After `scale` changed, run the bronze pipeline again
-(silver and gold read what it wrote).
+`--only` takes the name with or without the `dev-<your name>-` prefix. After `scale` changed, run the bronze
+pipeline again (silver and gold read what it wrote).
 
 ## The two targets
 
-- `dev` (mode `development`): your own copy, pipelines named `dev-<your name>-shop-bronze`, `-shop-silver` and `-shop-gold`, no
-  schedule, tables in the schema `shop_dev`. Pipeline names of a development copy are limited to 40 characters, so a sign-in name
-  of up to 24 characters fits.
+- `dev` (mode `development`): your own copy, pipelines named `dev-<your name>-shop-1-bronze`, `-shop-2-silver` and
+  `-shop-3-gold`, no schedule, tables in the schema `shop_dev`. Pipeline names of a development copy are limited to 40
+  characters, so a sign-in name of up to 22 characters fits.
 - `prod` (mode `production`, `runAs: pipeline-demo`): the shared copy an administrator publishes once, pipelines named
-  `shop-bronze`, `shop-silver` and `shop-gold`, tables in the schema `shop`. They run on a schedule (02:00, 02:30 and 03:00
-  Europe/Berlin); `stardelt bundle run . -t prod` runs them once by hand as well.
+  `shop-1-bronze`, `shop-2-silver` and `shop-3-gold`, tables in the schema `shop`. They run on a schedule (02:00, 02:30 and
+  03:00 Europe/Berlin); `stardelt bundle run . -t prod` runs them once by hand as well.
 
 ## Take it down
 

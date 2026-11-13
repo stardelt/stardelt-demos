@@ -1,4 +1,4 @@
-name: shop-silver
+name: shop-2-silver
 schedule: {cron: "30 2 * * *", timezone: Europe/Berlin}
 params:
   schema: "${var.schema}"
