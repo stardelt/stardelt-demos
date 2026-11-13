@@ -1,19 +1,18 @@
 # The shop as a bundle: publish it, run it, look at it, take it down
 
 The same little shop as `examples/shop` (200 customers, 30 products, 200 000 generated order lines, one layer per catalog), but
-as a **bundle of twelve SQL pipelines** instead of a dbt project. It needs no dbt, no extra image and no terminal on the cluster:
-only the `stardelt` command line, signed in.
+as a **bundle of three SQL pipelines, one per layer** instead of a dbt project. It needs no dbt, no extra image and no terminal on
+the cluster: only the `stardelt` command line, signed in.
 
-| Layer | Catalog | Pipelines | What |
+| Layer | Catalog | Pipeline (tasks) | What |
 |---|---|---|---|
-| schemas | `bronze`, `silver`, `gold` | `shop-01-bronze`, `shop-02-silver`, `shop-03-gold` | one schema in each catalog |
-| bronze | `bronze` | `shop-04-customers`, `shop-05-products`, `shop-06-lines` | the two small seed tables and the generated order lines |
-| silver | `silver` | `shop-07-stg-cust`, `shop-08-stg-prod`, `shop-09-stg-lines` | three views with clean names and types |
-| gold | `gold` | `shop-10-revenue`, `shop-11-ltv`, `shop-12-mix` | `daily_revenue`, `customer_ltv` (window functions), `product_mix` |
+| bronze | `bronze` | `shop-bronze` (`schema`, `customers`, `products`, `order_lines`) | the two small seed tables and the generated order lines |
+| silver | `silver` | `shop-silver` (`schema`, `stg_customers`, `stg_products`, `stg_order_lines`) | three views with clean names and types |
+| gold | `gold` | `shop-gold` (`schema`, `daily_revenue`, `customer_ltv`, `product_mix`) | `daily_revenue`, `customer_ltv` (window functions), `product_mix` |
 
-A pipeline runs exactly one statement, so every step of the shop is one pipeline; they run in name order, and the number in the
-name is that order. Nothing is downloaded and nothing large is stored in Git: the order lines are built inside the query engine
-from the line number (`scale` of them, a multiple of 1000, default 200 000).
+The three pipelines run in name order, and the `schema` task runs before the tasks that depend on it. Nothing is downloaded and
+nothing large is stored in Git: the order lines are built inside the query engine from the line number (`scale` of them, a
+multiple of 1000, default 200 000).
 
 ## Before you start (an administrator, once)
 
@@ -26,9 +25,9 @@ from the line number (`scale` of them, a multiple of 1000, default 200 000).
 
 ```bash
 cd examples/shop-bundle
-stardelt bundle validate .            # offline: twelve pipelines for each of the two targets
-stardelt bundle plan . -t dev         # twelve lines "would-create"
-stardelt bundle deploy . -t dev       # twelve pipelines, named dev-<your name>-shop-NN-..., no schedule
+stardelt bundle validate .            # offline: three pipelines for each of the two targets
+stardelt bundle plan . -t dev         # three lines "would-create"
+stardelt bundle deploy . -t dev       # three pipelines, named dev-<your name>-shop-bronze, ...
 stardelt bundle run . -t dev          # starts them one after the other, waits for each, stops at the first that fails
 stardelt bundle summary . -t dev      # what runs on the stage, from which commit
 ```
@@ -49,18 +48,20 @@ Change something (for example the `scale` variable in `bundle.yaml`), then:
 ```bash
 stardelt bundle plan . -t dev --diff  # shows what would change in each pipeline
 stardelt bundle deploy . -t dev
-stardelt bundle run . -t dev --only shop-06-lines
+stardelt bundle run . -t dev --only shop-bronze
 ```
 
-`--only` takes the name with or without the `dev-<your name>-` prefix. After `scale` changed, run the pipelines from `shop-06-lines`
-on again (the tables downstream are rebuilt from the lines).
+`--only` takes the name with or without the `dev-<your name>-` prefix. After `scale` changed, run the bronze pipeline again
+(silver and gold read what it wrote).
 
 ## The two targets
 
-- `dev` (mode `development`): your own copy, pipelines named `dev-<your name>-shop-NN-...`, no schedule, tables in the schema
-  `shop_dev`. Pipeline names of a development copy are limited to 40 characters, so a sign-in name of up to 18 characters fits.
+- `dev` (mode `development`): your own copy, pipelines named `dev-<your name>-shop-bronze`, `-shop-silver` and `-shop-gold`, no
+  schedule, tables in the schema `shop_dev`. Pipeline names of a development copy are limited to 40 characters, so a sign-in name
+  of up to 24 characters fits.
 - `prod` (mode `production`, `runAs: pipeline-demo`): the shared copy an administrator publishes once, pipelines named
-  `shop-NN-...`, tables in the schema `shop`. It has no schedule either; run it with `stardelt bundle run . -t prod`.
+  `shop-bronze`, `shop-silver` and `shop-gold`, tables in the schema `shop`. They run on a schedule (02:00, 02:30 and 03:00
+  Europe/Berlin); `stardelt bundle run . -t prod` runs them once by hand as well.
 
 ## Take it down
 
@@ -88,7 +89,7 @@ drop schema bronze.shop_dev;
   merging the last three days.
 - Seeds are `values` lists inside two statements (`sql/04_customers.sql`, `sql/05_products.sql`), generated from the CSV files of
   `examples/shop/seeds`.
-- The twelve statements were run in order against a local Trino 480 (with in-memory catalogs standing in for `bronze`, `silver` and
+- The statements were run in order against a local Trino 480 (with in-memory catalogs standing in for `bronze`, `silver` and
   `gold`, so `create or replace table` was run as drop and create) on 2026-11-02, and the checks below held. They were NOT run
   on a platform instance yet (Iceberg tables behind the catalog, the group's permissions, the Airflow loader): the first run
   there is the check (demos#31, slice A), and a failure is a bug in this example, file it. Times and memory are recorded here

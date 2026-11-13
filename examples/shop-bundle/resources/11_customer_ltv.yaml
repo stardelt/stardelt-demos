@@ -1,4 +1,0 @@
-name: shop-11-ltv
-sqlFile: sql/11_customer_ltv.sql
-params:
-  schema: "${var.schema}"
