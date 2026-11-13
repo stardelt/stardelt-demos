@@ -1,4 +1,0 @@
-name: shop-01-bronze
-sqlFile: sql/01_schema_bronze.sql
-params:
-  schema: "${var.schema}"

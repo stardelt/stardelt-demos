@@ -1,4 +1,0 @@
-name: shop-09-stg-lines
-sqlFile: sql/09_stg_order_lines.sql
-params:
-  schema: "${var.schema}"

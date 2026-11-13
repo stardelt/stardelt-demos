@@ -1,0 +1,9 @@
+name: shop-3-gold
+schedule: {cron: "0 3 * * *", timezone: Europe/Berlin}
+params:
+  schema: "${var.schema}"
+tasks:
+  - {name: schema, sqlFile: sql/03_schema_gold.sql}
+  - {name: daily_revenue, sqlFile: sql/10_daily_revenue.sql, dependsOn: [schema]}
+  - {name: customer_ltv, sqlFile: sql/11_customer_ltv.sql, dependsOn: [schema]}
+  - {name: product_mix, sqlFile: sql/12_product_mix.sql, dependsOn: [schema]}

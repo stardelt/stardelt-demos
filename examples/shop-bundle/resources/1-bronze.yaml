@@ -1,0 +1,10 @@
+name: shop-1-bronze
+schedule: {cron: "0 2 * * *", timezone: Europe/Berlin}
+params:
+  schema: "${var.schema}"
+  scale: "${var.scale}"
+tasks:
+  - {name: schema, sqlFile: sql/01_schema_bronze.sql}
+  - {name: customers, sqlFile: sql/04_customers.sql, dependsOn: [schema]}
+  - {name: products, sqlFile: sql/05_products.sql, dependsOn: [schema]}
+  - {name: order_lines, sqlFile: sql/06_order_lines.sql, dependsOn: [schema]}
